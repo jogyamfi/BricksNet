@@ -14,6 +14,7 @@
     <PackageVersion Include="ApacheThrift" Version="0.21.0" />
     <PackageVersion Include="Apache.Arrow" Version="18.0.0" />
     <PackageVersion Include="K4os.Compression.LZ4" Version="1.3.8" />
+    <PackageVersion Include="K4os.Compression.LZ4.Streams" Version="1.3.8" />
 
     <!-- Packaging (Phase 12) -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />

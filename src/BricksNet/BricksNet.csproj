@@ -28,6 +28,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Phase 7 — Result Handling -->
+    <PackageReference Include="Apache.Arrow" />
+    <PackageReference Include="K4os.Compression.LZ4" />
+    <PackageReference Include="K4os.Compression.LZ4.Streams" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Generated Thrift code is hand-ported (see Backends/Thrift/Generated/README) and
          excluded from style/doc analysis to mirror compiler-generated output. -->
     <None Remove="Backends\Thrift\Generated\**" />

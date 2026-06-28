@@ -1,0 +1,121 @@
+using System.Globalization;
+using System.Text.Json;
+using BricksNet.Contracts;
+
+namespace BricksNet.Results;
+
+/// <summary>
+/// Parses an inline JSON result payload (the <c>JSON_ARRAY</c> disposition of the SQL Statement
+/// Execution API): a JSON array of row arrays whose cells are JSON strings. Values are coerced to
+/// .NET types using the supplied <see cref="ColumnInfo"/> schema. The entire payload is returned by
+/// the first <see cref="FetchNextChunkAsync"/> call.
+/// </summary>
+public sealed class JsonResultHandler : IResultsProvider
+{
+    private readonly ReadOnlyMemory<byte> _payload;
+    private readonly IReadOnlyList<ColumnInfo> _schema;
+    private bool _hasMoreRows;
+
+    /// <summary>Creates a handler over a buffered JSON payload and its column schema.</summary>
+    public JsonResultHandler(ReadOnlyMemory<byte> payload, IReadOnlyList<ColumnInfo> schema)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+        _payload = payload;
+        _schema = schema;
+        _hasMoreRows = !payload.IsEmpty;
+    }
+
+    /// <inheritdoc />
+    public bool HasMoreRows => _hasMoreRows;
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<IReadOnlyDictionary<string, object?>>> FetchNextChunkAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!_hasMoreRows)
+        {
+            return Task.FromResult<IReadOnlyList<IReadOnlyDictionary<string, object?>>>(
+                Array.Empty<IReadOnlyDictionary<string, object?>>());
+        }
+
+        _hasMoreRows = false;
+        return Task.FromResult(Parse());
+    }
+
+    private IReadOnlyList<IReadOnlyDictionary<string, object?>> Parse()
+    {
+        using var document = JsonDocument.Parse(_payload);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<IReadOnlyDictionary<string, object?>>();
+        }
+
+        var rows = new List<IReadOnlyDictionary<string, object?>>(root.GetArrayLength());
+        foreach (var rowElement in root.EnumerateArray())
+        {
+            var record = new Dictionary<string, object?>(_schema.Count, StringComparer.Ordinal);
+            var ordinal = 0;
+            foreach (var cell in rowElement.EnumerateArray())
+            {
+                if (ordinal >= _schema.Count)
+                {
+                    break;
+                }
+
+                var column = _schema[ordinal++];
+                record[column.Name] = Coerce(cell, column.TypeName);
+            }
+
+            rows.Add(record);
+        }
+
+        return rows;
+    }
+
+    private static object? Coerce(JsonElement cell, string typeName)
+    {
+        if (cell.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        var text = cell.ValueKind == JsonValueKind.String ? cell.GetString() : cell.GetRawText();
+        if (text is null)
+        {
+            return null;
+        }
+
+        var normalized = NormalizeTypeName(typeName);
+        return normalized switch
+        {
+            "BOOLEAN" => bool.Parse(text),
+            "TINYINT" or "BYTE" => sbyte.Parse(text, CultureInfo.InvariantCulture),
+            "SMALLINT" or "SHORT" => short.Parse(text, CultureInfo.InvariantCulture),
+            "INT" or "INTEGER" => int.Parse(text, CultureInfo.InvariantCulture),
+            "BIGINT" or "LONG" => long.Parse(text, CultureInfo.InvariantCulture),
+            "FLOAT" or "REAL" => float.Parse(text, CultureInfo.InvariantCulture),
+            "DOUBLE" => double.Parse(text, CultureInfo.InvariantCulture),
+            "DECIMAL" or "NUMERIC" => decimal.Parse(text, CultureInfo.InvariantCulture),
+            "DATE" => DateOnly.Parse(text, CultureInfo.InvariantCulture),
+            "TIMESTAMP" or "TIMESTAMP_NTZ" => DateTimeOffset.Parse(
+                text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal),
+            "BINARY" => Convert.FromBase64String(text),
+            _ => text,
+        };
+    }
+
+    private static string NormalizeTypeName(string typeName)
+    {
+        if (string.IsNullOrEmpty(typeName))
+        {
+            return string.Empty;
+        }
+
+        var parenIndex = typeName.IndexOf('(', StringComparison.Ordinal);
+        var bare = parenIndex >= 0 ? typeName[..parenIndex] : typeName;
+        return bare.Trim().ToUpperInvariant();
+    }
+}
