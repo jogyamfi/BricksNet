@@ -1,0 +1,4 @@
+# Hand-ported / auto-generated Thrift types — suppress all analyzer rules.
+# See README.md in this directory for the regeneration command.
+[*.cs]
+generated_code = true

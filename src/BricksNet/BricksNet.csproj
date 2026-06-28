@@ -23,6 +23,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Phase 5 — Thrift Code Generation & Transport -->
+    <PackageReference Include="ApacheThrift" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Generated Thrift code is hand-ported (see Backends/Thrift/Generated/README) and
+         excluded from style/doc analysis to mirror compiler-generated output. -->
+    <None Remove="Backends\Thrift\Generated\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Expose internal test seams (e.g. OAuthPkceAuthProvider browser-launch ctor) to unit tests. -->
     <InternalsVisibleTo Include="BricksNet.Tests" />
   </ItemGroup>
