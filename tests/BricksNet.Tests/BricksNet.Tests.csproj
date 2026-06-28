@@ -4,6 +4,8 @@
     <IsPackable>false</IsPackable>
     <!-- Suppress missing XML doc warnings in test projects -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- ConfigureAwait is irrelevant in test code (no synchronization context to capture). -->
+    <NoWarn>$(NoWarn);CA2007</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

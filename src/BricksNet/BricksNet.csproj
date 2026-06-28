@@ -22,4 +22,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Expose internal test seams (e.g. OAuthPkceAuthProvider browser-launch ctor) to unit tests. -->
+    <InternalsVisibleTo Include="BricksNet.Tests" />
+  </ItemGroup>
+
 </Project>
