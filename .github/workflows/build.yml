@@ -1,0 +1,33 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: bricksnet
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore BricksNet.sln
+
+      - name: Build
+        run: dotnet build BricksNet.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test BricksNet.sln --no-build -c Release --filter "Category!=E2E"

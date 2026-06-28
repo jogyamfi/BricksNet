@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>BricksNet</AssemblyName>
+    <RootNamespace>BricksNet</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Suppress missing XML doc warnings until public API is defined in Phase 2+ -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- Package metadata stubs — filled in fully in Phase 12 -->
+    <PackageId>BricksNet</PackageId>
+    <Version>0.1.0-alpha</Version>
+    <Authors>BricksNet Contributors</Authors>
+    <Description>BricksNet — Databricks SQL client library for .NET 8</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+
+</Project>
