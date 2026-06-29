@@ -55,11 +55,11 @@ public sealed class BricksNetConnection : DbConnection
 
     /// <summary>
     /// Factory that creates the underlying fluent client from the parsed options and access
-    /// token. The Phase 10 fluent API wires the production implementation here; tests may
-    /// override it to inject a fake client. Until a factory is assigned, opening a connection
-    /// throws <see cref="InvalidOperationException"/>.
+    /// token. Defaults to the production <see cref="BricksNetClient"/> wired by the Phase 10
+    /// fluent API; tests may override it to inject a fake client.
     /// </summary>
     public static Func<BricksNetClientOptions, string?, IBricksNetClient>? ClientFactory { get; set; }
+        = static (options, accessToken) => new BricksNetClient(options, accessToken);
 
     /// <inheritdoc />
     [AllowNull]

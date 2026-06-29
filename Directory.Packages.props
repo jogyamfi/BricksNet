@@ -6,6 +6,7 @@
   <ItemGroup>
     <!-- HTTP / DI / Logging (Phase 3, 9, 10) -->
     <PackageVersion Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
     <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="8.0.1" />
