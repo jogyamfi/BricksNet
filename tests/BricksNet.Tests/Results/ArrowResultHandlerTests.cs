@@ -19,7 +19,11 @@ public class ArrowResultHandlerTests
             .Select(c =>
             {
                 var b = new Int32Array.Builder();
-                foreach (var v in c.Values) b.Append(v);
+                foreach (var v in c.Values)
+                {
+                    b.Append(v);
+                }
+
                 return (IArrowArray)b.Build();
             })
             .ToArray();
