@@ -33,6 +33,7 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
     private const string ProxyUserKey = "ProxyUser";
     private const string ProxyPasswordKey = "ProxyPassword";
     private const string AllowSelfSignedKey = "AllowSelfSignedCerts";
+    private const string UserAgentKey = "UserAgent";
 
     /// <summary>Maps each alias keyword to its canonical keyword.</summary>
     private static readonly IReadOnlyDictionary<string, string> KeywordAliases =
@@ -178,6 +179,18 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
         set => this[AllowSelfSignedKey] = value;
     }
 
+    /// <summary>
+    /// Overrides the <c>User-Agent</c> header sent on every HTTP request.
+    /// Leave empty to use the library default. Set to a recognised driver string
+    /// (e.g. <c>SimbaJDBCDriver/2.6.38</c>) when the target SQL warehouse rejects
+    /// the default client identifier.
+    /// </summary>
+    public string? UserAgent
+    {
+        get => GetString(UserAgentKey);
+        set => this[UserAgentKey] = value!;
+    }
+
     /// <inheritdoc />
     [AllowNull]
     public override object this[string keyword]
@@ -229,6 +242,7 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
             UseThrift = UseThrift,
             ProxyOptions = BuildProxyOptions(),
             SslOptions = new SslOptions { AllowSelfSignedCerts = AllowSelfSignedCerts },
+            UserAgent = string.IsNullOrEmpty(UserAgent) ? null : UserAgent,
         };
     }
 

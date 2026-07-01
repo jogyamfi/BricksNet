@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>BricksNet.Samples</AssemblyName>
+    <RootNamespace>BricksNet.Samples</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- Suppress XML-doc and ConfigureAwait warnings — sample code intentionally omits them -->
+    <NoWarn>$(NoWarn);CS1591;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- Auto-copy any appsettings.*.json placed in the project dir (e.g. appsettings.User.json). -->
+    <!-- Add appsettings.User.json to .gitignore — never commit credentials.                       -->
+    <Content Include="appsettings.*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BricksNet\BricksNet.csproj" />
+  </ItemGroup>
+
+</Project>

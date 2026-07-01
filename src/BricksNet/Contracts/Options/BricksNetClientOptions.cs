@@ -29,4 +29,12 @@ public sealed record BricksNetClientOptions
 
     /// <summary>Telemetry and diagnostics configuration.</summary>
     public TelemetryOptions TelemetryOptions { get; init; } = new();
+
+    /// <summary>
+    /// Overrides the <c>User-Agent</c> header sent on every HTTP request.
+    /// Leave <see langword="null"/> to use the library default (<c>BricksNet.dotnet/&lt;version&gt;</c>).
+    /// Set to a recognised driver string (e.g. <c>SimbaJDBCDriver/2.6.38</c>) when the target
+    /// SQL warehouse rejects the default client identifier.
+    /// </summary>
+    public string? UserAgent { get; init; }
 }

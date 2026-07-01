@@ -37,26 +37,33 @@ await using var client = new BricksNetClient(options, accessToken: "<pat>");
 await using var session = await client.OpenSessionAsync();
 await using var operation = await session.ExecuteStatementAsync("SELECT 1 AS n");
 
-await foreach (var row in operation.FetchAllAsync())
+var rows = await operation.FetchAllAsync<IReadOnlyDictionary<string, object?>>();
+foreach (var row in rows)
     Console.WriteLine(row["n"]);
 ```
 
-### OAuth M2M (client credentials)
+### OAuth 2.0 PKCE (browser redirect)
 
 ```csharp
 using BricksNet;
 using BricksNet.Auth;
+using BricksNet.Contracts.Options;
 
 var options = new BricksNetClientOptions
 {
-    Host     = "adb-<workspace-id>.azuredatabricks.net",
-    HttpPath = "/sql/1.0/warehouses/<warehouse-id>",
+    Host      = "adb-<workspace-id>.azuredatabricks.net",
+    HttpPath  = "/sql/1.0/warehouses/<warehouse-id>",
+    AuthType  = AuthType.OAuthPkce,
+    UseThrift = false,
 };
 
-var oauthOptions = new OAuthClientCredentialsOptions
+// A browser window opens for the user to authorise the application.
+var oauthOptions = new OAuthOptions
 {
-    ClientId     = "<service-principal-client-id>",
-    ClientSecret = "<service-principal-secret>",
+    ClientId              = "<service-principal-client-id>",
+    AuthorizationEndpoint = new Uri("https://adb-<workspace-id>.azuredatabricks.net/oidc/v1/authorize"),
+    TokenEndpoint         = new Uri("https://adb-<workspace-id>.azuredatabricks.net/oidc/v1/token"),
+    Scopes                = ["sql"],
 };
 
 await using var client = new BricksNetClient(options, oauthOptions);

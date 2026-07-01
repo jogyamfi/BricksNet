@@ -15,7 +15,7 @@ namespace BricksNet.Backends.Rest;
 internal sealed class RestSessionBackend : ISessionBackend
 {
     private const string Disposition = "INLINE";
-    private const string Format = "ARROW_STREAM";
+    private const string Format = "JSON_ARRAY";
     private const string OnWaitTimeout = "CONTINUE";
     private const int DefaultWaitSeconds = 10;
     private const int MinWaitSeconds = 5;

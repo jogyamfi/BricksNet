@@ -38,6 +38,11 @@ public static class HttpClientBuilderExtensions
             BaseAddress = new UriBuilder(Uri.UriSchemeHttps, options.Host, options.Port).Uri,
         };
 
+        if (options.UserAgent is { Length: > 0 } ua)
+        {
+            clientOptions = clientOptions with { UserAgent = ua };
+        }
+
         // Handlers are resolved per-request by IHttpClientFactory; register them as transient and
         // supply their non-DI configuration (RetryOptions) from the captured client options.
         services.AddTransient(sp => new HttpRetryHandler(
