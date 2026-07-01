@@ -1,0 +1,68 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    # Run weekly on Monday at 08:00 UTC.
+    - cron: "0 8 * * 1"
+
+jobs:
+  vulnerable-packages:
+    name: Vulnerable NuGet packages
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: bricksnet
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore BricksNet.sln
+
+      - name: Check for vulnerable packages
+        # Exit code 1 if any known vulnerabilities are found.
+        run: dotnet list package --vulnerable --include-transitive 2>&1 | tee vuln-report.txt ; grep -q "has the following vulnerable packages" vuln-report.txt && exit 1 || exit 0
+
+      - name: Upload vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-report
+          path: bricksnet/vuln-report.txt
+
+  owasp-dependency-check:
+    name: OWASP Dependency-Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: BricksNet
+          path: bricksnet/src
+          format: HTML
+          # Fail the job on CVSS score >= 7 (high/critical).
+          args: >
+            --failOnCVSS 7
+            --enableRetired
+
+      - name: Upload OWASP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owasp-report
+          path: reports/
