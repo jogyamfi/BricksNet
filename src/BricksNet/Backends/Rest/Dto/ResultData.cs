@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace BricksNet.Backends.Rest.Dto;
 
@@ -30,7 +31,9 @@ internal sealed class ResultData
     /// <summary>
     /// Inline result payload (<c>INLINE</c> disposition). For <c>JSON_ARRAY</c> this is an
     /// array of row arrays; for <c>ARROW_STREAM</c> it is a base64-encoded byte string.
+    /// The API delivers this under the <c>data_array</c> field.
     /// </summary>
+    [JsonPropertyName("data_array")]
     public JsonElement? Data { get; set; }
 
     /// <summary>External result links (<c>EXTERNAL_LINKS</c> disposition / CloudFetch).</summary>

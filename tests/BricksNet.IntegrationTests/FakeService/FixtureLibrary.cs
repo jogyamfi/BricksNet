@@ -130,7 +130,7 @@ internal static class FixtureLibrary
         {
             ["chunk_index"] = 0,
             ["row_count"] = SampleRows.Count,
-            ["data"] = Convert.ToBase64String(arrow),
+            ["data_array"] = Convert.ToBase64String(arrow),
         },
     };
 
