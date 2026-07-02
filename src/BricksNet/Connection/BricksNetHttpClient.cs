@@ -32,6 +32,10 @@ public sealed class BricksNetHttpClient
     /// <summary>Base address applied to relative request URIs.</summary>
     public Uri? BaseAddress => _httpClient.BaseAddress;
 
+    /// <summary>Exposes the underlying default request headers for test assertions.</summary>
+    internal System.Net.Http.Headers.HttpRequestHeaders DefaultRequestHeaders =>
+        _httpClient.DefaultRequestHeaders;
+
     /// <summary>
     /// Sends an HTTP request through the configured pipeline.
     /// </summary>

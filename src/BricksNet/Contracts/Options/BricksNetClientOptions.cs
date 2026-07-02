@@ -15,8 +15,8 @@ public sealed record BricksNetClientOptions
     /// <summary>Authentication mechanism. Defaults to <see cref="AuthType.Pat"/>.</summary>
     public AuthType AuthType { get; init; } = AuthType.Pat;
 
-    /// <summary>When <see langword="true"/>, the Thrift backend is used; otherwise the REST backend.</summary>
-    public bool UseThrift { get; init; } = true;
+    /// <summary>When <see langword="true"/>, the Thrift backend is used; otherwise the REST backend. Defaults to <see langword="false"/> (REST).</summary>
+    public bool UseThrift { get; init; } = false;
 
     /// <summary>HTTP retry policy.</summary>
     public RetryOptions RetryOptions { get; init; } = new();
@@ -32,9 +32,23 @@ public sealed record BricksNetClientOptions
 
     /// <summary>
     /// Overrides the <c>User-Agent</c> header sent on every HTTP request.
-    /// Leave <see langword="null"/> to use the library default (<c>BricksNet.dotnet/&lt;version&gt;</c>).
-    /// Set to a recognised driver string (e.g. <c>SimbaJDBCDriver/2.6.38</c>) when the target
-    /// SQL warehouse rejects the default client identifier.
     /// </summary>
+    /// <remarks>
+    /// When <see langword="null"/> (the default) the library chooses automatically:
+    /// <list type="bullet">
+    ///   <item><description>
+    ///     <b>Thrift</b> transport (<see cref="UseThrift"/> = <see langword="true"/>): uses
+    ///     <see cref="BricksNetDefaults.ThriftUserAgent"/> because Databricks SQL Warehouses
+    ///     require a minimum Simba driver version over this protocol.
+    ///   </description></item>
+    ///   <item><description>
+    ///     <b>REST</b> transport (<see cref="UseThrift"/> = <see langword="false"/>): uses
+    ///     <c>BricksNet.dotnet/&lt;version&gt;</c>.
+    ///   </description></item>
+    /// </list>
+    /// When set explicitly, the value must use the RFC 7231 <c>Product/Version</c> format
+    /// (slash separator). A space-separated <c>Product Version</c> value will be silently
+    /// normalized to <c>Product/Version</c> and a debug-level warning will be logged.
+    /// </remarks>
     public string? UserAgent { get; init; }
 }

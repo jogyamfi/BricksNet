@@ -106,10 +106,10 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
         set => this[AuthTypeKey] = value.ToString();
     }
 
-    /// <summary>When <see langword="true"/>, connects via the Thrift backend; otherwise REST. Defaults to <see langword="true"/>.</summary>
+    /// <summary>When <see langword="true"/>, connects via the Thrift backend; otherwise REST. Defaults to <see langword="false"/> (REST).</summary>
     public bool UseThrift
     {
-        get => GetBoolean(UseThriftKey, true);
+        get => GetBoolean(UseThriftKey, false);
         set => this[UseThriftKey] = value;
     }
 
@@ -181,10 +181,16 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
 
     /// <summary>
     /// Overrides the <c>User-Agent</c> header sent on every HTTP request.
-    /// Leave empty to use the library default. Set to a recognised driver string
-    /// (e.g. <c>SimbaJDBCDriver/2.6.38</c>) when the target SQL warehouse rejects
-    /// the default client identifier.
+    /// Leave empty to let the library choose automatically based on the transport:
+    /// <see cref="BricksNetDefaults.ThriftUserAgent"/> for Thrift, or
+    /// <c>BricksNet.dotnet/&lt;version&gt;</c> for REST.
     /// </summary>
+    /// <remarks>
+    /// When set, use the RFC 7231 <c>Product/Version</c> format (slash separator,
+    /// e.g. <c>SimbaJDBCDriver/2.6.38</c>). A space-separated value such as
+    /// <c>SimbaJDBCDriver 2.6.38</c> will be silently normalized and a debug-level
+    /// warning will be logged.
+    /// </remarks>
     public string? UserAgent
     {
         get => GetString(UserAgentKey);

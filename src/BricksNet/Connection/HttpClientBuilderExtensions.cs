@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.RegularExpressions;
 using BricksNet.Connection.Handlers;
 using BricksNet.Contracts;
 using BricksNet.Contracts.Options;
@@ -13,7 +14,7 @@ namespace BricksNet.Connection;
 /// Registers the BricksNet HTTP transport — the typed <see cref="BricksNetHttpClient"/>, its primary
 /// <see cref="SocketsHttpHandler"/> (proxy + TLS), and the delegating-handler pipeline.
 /// </summary>
-public static class HttpClientBuilderExtensions
+public static partial class HttpClientBuilderExtensions
 {
     /// <summary>
     /// Registers the BricksNet HTTP transport on <paramref name="services"/>.
@@ -38,9 +39,34 @@ public static class HttpClientBuilderExtensions
             BaseAddress = new UriBuilder(Uri.UriSchemeHttps, options.Host, options.Port).Uri,
         };
 
-        if (options.UserAgent is { Length: > 0 } ua)
+        // Determine the effective User-Agent, auto-injecting a Thrift-compatible value when
+        // no explicit override is provided, and normalizing the common space-separated format.
+        string effectiveUserAgent;
+        string? originalUserAgent = null;
+        bool wasNormalized;
+
+        if (options.UserAgent is { Length: > 0 } explicitUa)
         {
-            clientOptions = clientOptions with { UserAgent = ua };
+            // Explicit override: normalize space-separated 'Product Version' to RFC 7231
+            // 'Product/Version' if needed (e.g. 'SimbaJDBCDriver 2.6.38' → 'SimbaJDBCDriver/2.6.38').
+            effectiveUserAgent = NormalizeUserAgent(explicitUa, out wasNormalized);
+            if (wasNormalized)
+            {
+                originalUserAgent = explicitUa;
+            }
+        }
+        else if (options.UseThrift)
+        {
+            // Thrift (HiveServer2) endpoint enforces a Simba driver allow-list; auto-inject the
+            // default value so callers do not need to configure it manually.
+            effectiveUserAgent = BricksNetDefaults.ThriftUserAgent;
+            wasNormalized = false;
+        }
+        else
+        {
+            // REST endpoint: use the library's own default identifier.
+            effectiveUserAgent = clientOptions.UserAgent;
+            wasNormalized = false;
         }
 
         // Handlers are resolved per-request by IHttpClientFactory; register them as transient and
@@ -53,11 +79,23 @@ public static class HttpClientBuilderExtensions
             sp.GetRequiredService<ILogger<AuthHeaderHandler>>()));
 
         IHttpClientBuilder builder = services
-            .AddHttpClient<BricksNetHttpClient>(BricksNetHttpClient.HttpClientName, http =>
+            .AddHttpClient<BricksNetHttpClient>(BricksNetHttpClient.HttpClientName, (sp, http) =>
             {
                 http.BaseAddress = clientOptions.BaseAddress;
                 http.Timeout = clientOptions.Timeout;
-                http.DefaultRequestHeaders.UserAgent.ParseAdd(clientOptions.UserAgent);
+
+                if (wasNormalized)
+                {
+                    sp.GetService<ILoggerFactory>()
+                        ?.CreateLogger(nameof(BricksNetHttpClient))
+                        .LogDebug(
+                            "UserAgent value '{Original}' was normalized to '{Effective}'. "
+                            + "Use 'Product/Version' format to avoid this.",
+                            originalUserAgent,
+                            effectiveUserAgent);
+                }
+
+                http.DefaultRequestHeaders.UserAgent.ParseAdd(effectiveUserAgent);
             })
             .ConfigurePrimaryHttpMessageHandler(sp =>
                 CreatePrimaryHandler(options, sp.GetRequiredService<ILogger<BricksNetHttpClient>>()))
@@ -68,6 +106,33 @@ public static class HttpClientBuilderExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Normalizes a <c>User-Agent</c> value from the common space-separated <c>Product Version</c>
+    /// format to the RFC 7231-compliant <c>Product/Version</c> format.
+    /// </summary>
+    /// <param name="ua">The raw User-Agent string (must be non-null).</param>
+    /// <param name="wasNormalized">
+    /// Set to <see langword="true"/> if a space-to-slash normalization was applied;
+    /// <see langword="false"/> if the value was already well-formed.
+    /// </param>
+    /// <returns>The normalized User-Agent string, or the original value unchanged.</returns>
+    internal static string NormalizeUserAgent(string ua, out bool wasNormalized)
+    {
+        var match = ProductVersionSpaceRegex().Match(ua);
+        if (match.Success)
+        {
+            wasNormalized = true;
+            return $"{match.Groups[1].Value}/{match.Groups[2].Value}";
+        }
+
+        wasNormalized = false;
+        return ua;
+    }
+
+    /// <summary>Matches 'ProductName 1.2.3' (space-separated) but not 'ProductName/1.2.3'.</summary>
+    [GeneratedRegex(@"^([A-Za-z][\w.-]*) (\d+\.\d+[\w.-]*)$", RegexOptions.CultureInvariant)]
+    private static partial Regex ProductVersionSpaceRegex();
 
     private static SocketsHttpHandler CreatePrimaryHandler(BricksNetClientOptions options, ILogger logger)
     {

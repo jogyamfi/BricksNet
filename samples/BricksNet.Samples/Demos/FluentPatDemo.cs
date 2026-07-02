@@ -25,6 +25,42 @@ public static class FluentPatDemo
             UserAgent = userAgent,  // optional override of default User-Agent header
         };
 
+        string sql = @"SELECT
+  `ti`.`Id`,
+  `ti`.`Name` AS InterventionName,
+  `ti`.`ProblemOpportunity`,
+  `ti`.`Intervention` AS InterventionDescription,
+  `ti`.`Outcomes`,
+  `ti`.`CohortDefinition`,
+  `ti`.`Literature`,
+  `ti`.`UIGroupData`,
+  COUNT(`tiPmi`.`PseudoNHSNumber`) AS PatientCount
+FROM
+  Pathfinder.tbl_odin_p6_analytics_s2a_pophealthpmi_tableau AS `pmi`
+    INNER JOIN pathfinder.`TargetedInterventionPMI` AS `tiPmi`
+      ON `pmi`.`PseudoNHSNumber` = `tiPmi`.`PseudoNHSNumber`
+      AND `pmi`.`SystemCode` = `tiPmi`.`SystemCode`
+    INNER JOIN pathfinder.`TargetedIntervention` AS `ti`
+      ON `tiPmi`.`TargetedIntervention_ID` = `ti`.`Id`
+      AND `ti`.`Enabled` = 1
+WHERE
+  pmi.`Tenant_ID` = '1'
+  AND pmi.`SystemCode` = 'ICS1'
+  AND pmi.`ReportingPeriod_Name` = 'Jan25-Dec25'
+  AND IsPathway = 1
+GROUP BY
+  `ti`.`Id`,
+  `ti`.`Name`,
+  `ti`.`ProblemOpportunity`,
+  `ti`.`Intervention`,
+  `ti`.`Outcomes`,
+  `ti`.`CohortDefinition`,
+  `ti`.`Literature`,
+  `ti`.`UIGroupData`
+ORDER BY
+  `ti`.`Id`";
+
+         sql = "select 1 as Option1 union select 2 as Option1";
         Console.WriteLine("[FluentPat] Connecting with PAT...");
         await using var client = new BricksNetClient(options, accessToken: token);
 
@@ -32,8 +68,8 @@ public static class FluentPatDemo
         await using var session = await client.OpenSessionAsync();
 
         Console.WriteLine("[FluentPat] Executing query...");
-        await using var operation = await session.ExecuteStatementAsync(
-            "SELECT current_catalog() AS catalog, current_database() AS db");
+        await using var operation = await session.ExecuteStatementAsync(sql);
+          //  "SELECT current_catalog() AS catalog, current_database() AS db");
 
         var rows = await operation.FetchAllAsync<IReadOnlyDictionary<string, object?>>();
 

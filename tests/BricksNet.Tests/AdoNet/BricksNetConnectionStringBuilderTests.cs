@@ -42,7 +42,7 @@ public class BricksNetConnectionStringBuilderTests
         var builder = new BricksNetConnectionStringBuilder();
 
         Assert.Equal(443, builder.Port);
-        Assert.True(builder.UseThrift);
+        Assert.False(builder.UseThrift);
         Assert.Equal(AuthType.Pat, builder.AuthType);
         Assert.Equal(10_000, builder.MaxRows);
         Assert.Equal(0, builder.QueryTimeoutSeconds);
