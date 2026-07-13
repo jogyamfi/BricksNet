@@ -32,7 +32,7 @@ var demo = args.Length > 0 ? args[0] : string.Empty;
 if (string.IsNullOrEmpty(demo))
 {
     Console.WriteLine(Usage);
-    return;
+    //return;
 }
 
 Console.WriteLine($"Running demo: {demo}");
@@ -46,7 +46,8 @@ try
         "FluentOAuth"  => FluentOAuthDemo.RunAsync(config),
         "AdoNetDapper" => AdoNetDapperDemo.RunAsync(config),
         "Di"           => DiDemo.RunAsync(config),
-        _              => Task.FromException(new ArgumentException($"Unknown demo '{demo}'."))
+        _              => FluentPatDemo.RunAsync(config),
+       //  _              => Task.FromException(new ArgumentException($"Unknown demo '{demo}'."))
     });
 }
 catch (InvalidOperationException ex) when (ex.Message.EndsWith("not configured.", StringComparison.Ordinal))

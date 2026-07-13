@@ -1,5 +1,5 @@
-using System.Data;
 using BricksNet.AdoNet;
+using BricksNet.Contracts.Options;
 using Dapper;
 using Microsoft.Extensions.Configuration;
 
@@ -19,21 +19,34 @@ public static class AdoNetDapperDemo
         var httpPath = config["Databricks:HttpPath"] ?? throw new InvalidOperationException("Databricks:HttpPath is not configured.");
         var token    = config["Databricks:Token"]    ?? throw new InvalidOperationException("Databricks:Token is not configured.");
         var userAgent = config["Databricks:UserAgent"];  // optional override of default User-Agent header
-        // Build the connection string from individual config values.
-        var connStr = $"Host={hostname};HttpPath={httpPath};Token={token};UserAgent={userAgent}";
-        Console.WriteLine($"[AdoNetDapper] Connection string: {connStr}");
+
+        var options = new BricksNetClientOptions
+        {
+            Host = hostname,
+            HttpPath = httpPath,
+            UseThrift = true,
+            UserAgent = string.IsNullOrWhiteSpace(userAgent) ? null : userAgent,
+        };
+
+        Console.WriteLine($"[AdoNetDapper] Connecting to Host={hostname};HttpPath={httpPath}");
         Console.WriteLine("[AdoNetDapper] Opening connection...");
-        await using var conn = new BricksNetConnection(connStr);
+
+        await using var conn = new BricksNetConnection(options, accessToken: token);
+       
         await conn.OpenAsync();
         Console.WriteLine("[AdoNetDapper] Connected.");
 
         // --- Dynamic rows ---
         Console.WriteLine("[AdoNetDapper] Dynamic query: current catalog and database");
-        var dynamics = await conn.QueryAsync(
-            "SELECT current_catalog() AS catalog_name, current_database() AS schema_name");
+         var dynamics = await conn.QueryAsync(
+             "SELECT current_catalog() AS catalog_name, current_database() AS schema_name");
+        
+        //var dynamics = await conn.QueryAsync(
+        //    "select 1 as Option1 union select 2 as Option1");
+        
         foreach (var row in dynamics)
         {
-            Console.WriteLine($"  catalog={row.catalog_name}, schema={row.schema_name}");
+            Console.WriteLine($"  Option1={row.Option1}");
         }
 
         // --- Typed POCO via Dapper ---

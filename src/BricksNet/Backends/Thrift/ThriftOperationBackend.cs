@@ -158,6 +158,10 @@ internal sealed class ThriftOperationBackend : IOperationBackend
         return mapped;
     }
 
+    // Arrow IPC end-of-stream marker: continuation token (0xFFFFFFFF) followed by size 0.
+    // ArrowStreamReader requires this sentinel to return null instead of throwing on EOF.
+    private static ReadOnlySpan<byte> ArrowEos => [0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00];
+
     private static ReadOnlyMemory<byte> BuildArrowPayload(
         TGetResultSetMetadataResp metadata,
         IReadOnlyList<TSparkArrowBatch> batches)
@@ -168,6 +172,8 @@ internal sealed class ThriftOperationBackend : IOperationBackend
         {
             totalLength += batch.Batch?.Length ?? 0;
         }
+
+        totalLength += ArrowEos.Length;
 
         var payload = new byte[totalLength];
         var offset = 0;
@@ -185,6 +191,8 @@ internal sealed class ThriftOperationBackend : IOperationBackend
                 offset += data.Length;
             }
         }
+
+        ArrowEos.CopyTo(payload.AsSpan(offset));
 
         return payload;
     }
