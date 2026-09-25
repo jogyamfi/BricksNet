@@ -238,7 +238,7 @@ internal sealed class FakeThriftTransport : TEndpointTransport
     public override Task FlushAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ResetConsumedMessageSize();
+        ResetMessageSizeAndConsumedBytes();
 
         if (_frames.TryDequeue(out var frame))
         {

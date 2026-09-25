@@ -53,9 +53,11 @@ jobs:
           path: src
           format: HTML
           # Fail the job on CVSS score >= 7 (high/critical).
+          # Documented false positives live in dependency-check-suppressions.xml.
           args: >
             --failOnCVSS 7
             --enableRetired
+            --suppression dependency-check-suppressions.xml
 
       - name: Upload OWASP report
         if: always()
