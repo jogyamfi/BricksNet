@@ -15,4 +15,17 @@
     <packageUrl regex="true">^pkg:nuget/Microsoft\.SourceLink\.GitHub@.*$</packageUrl>
     <cpe>cpe:/a:github:github</cpe>
   </suppress>
+  <suppress>
+    <notes><![CDATA[
+      False positive. CVE-2026-25087 is a use-after-free in Apache Arrow C++ (15.0.0–23.0.0, fixed in
+      C++ 23.0.1), reachable only when reading an Arrow IPC *file* with pre-buffering enabled via the
+      C++-only RecordBatchFileReader::PreBufferMetadata API. The Apache.Arrow NuGet package is the
+      independent, fully managed C# implementation and contains no Arrow C++ code; it is matched only
+      through the shared cpe:/a:apache:arrow CPE. BricksNet also reads IPC *streams*
+      (ArrowStreamReader), never IPC files. Suppressed by CVE id only, so other Arrow CVEs still fail
+      the scan.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:nuget/Apache\.Arrow@.*$</packageUrl>
+    <cve>CVE-2026-25087</cve>
+  </suppress>
 </suppressions>
