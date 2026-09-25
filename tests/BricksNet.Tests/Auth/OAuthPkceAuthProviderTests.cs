@@ -187,6 +187,130 @@ public class OAuthPkceAuthProviderTests
         Assert.Throws<ArgumentException>(() => new OAuthPkceAuthProvider(options, httpClient));
     }
 
+    [Fact]
+    public void Constructor_Throws_WhenRedirectHostNotLoopback()
+    {
+        OAuthOptions options = CreateOptions() with { RedirectHost = "example.com" };
+        using var httpClient = new HttpClient();
+
+        Assert.Throws<ArgumentException>(() => new OAuthPkceAuthProvider(options, httpClient));
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_UsesLocalhostRedirect_ByDefault()
+    {
+        const string tokenJson = "{\"access_token\":\"a\",\"expires_in\":3600}";
+        var mockHttp = new MockHttpMessageHandler();
+        mockHttp.When(HttpMethod.Post, TokenEndpoint).Respond("application/json", tokenJson);
+        using HttpClient httpClient = mockHttp.ToHttpClient();
+
+        string? redirect = null;
+        Task? callbackTask = null;
+        void OpenBrowser(Uri authUri)
+        {
+            IReadOnlyDictionary<string, string> query = ParseQuery(authUri.Query);
+            redirect = query["redirect_uri"];
+            callbackTask = SendCallbackAsync(redirect, "code", query["state"]);
+        }
+
+        var provider = new OAuthPkceAuthProvider(
+            CreateOptions(), httpClient, tokenCache: null, logger: null, openBrowser: OpenBrowser);
+
+        await provider.GetTokenAsync();
+        await callbackTask!;
+
+        Assert.StartsWith("http://localhost:", redirect, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_UsesRefreshToken_InsteadOfBrowser_OnSubsequentCalls()
+    {
+        var grants = new List<IReadOnlyDictionary<string, string>>();
+        var mockHttp = new MockHttpMessageHandler();
+        mockHttp
+            .When(HttpMethod.Post, TokenEndpoint)
+            .Respond(async req =>
+            {
+                IReadOnlyDictionary<string, string> form = ParseQuery(await req.Content!.ReadAsStringAsync());
+                grants.Add(form);
+                string json = form["grant_type"] == "authorization_code"
+                    ? "{\"access_token\":\"first\",\"expires_in\":3600,\"refresh_token\":\"rt-1\"}"
+                    : "{\"access_token\":\"refreshed\",\"expires_in\":3600}";
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json"),
+                };
+            });
+        using HttpClient httpClient = mockHttp.ToHttpClient();
+
+        int browserLaunches = 0;
+        Task? callbackTask = null;
+        void OpenBrowser(Uri authUri)
+        {
+            browserLaunches++;
+            IReadOnlyDictionary<string, string> query = ParseQuery(authUri.Query);
+            callbackTask = SendCallbackAsync(query["redirect_uri"], "code", query["state"]);
+        }
+
+        var provider = new OAuthPkceAuthProvider(
+            CreateOptions(), httpClient, tokenCache: null, logger: null, openBrowser: OpenBrowser);
+
+        Assert.Equal("first", await provider.GetTokenAsync());
+        await callbackTask!;
+        Assert.Equal("refreshed", await provider.GetTokenAsync());
+
+        Assert.Equal(1, browserLaunches);
+        Assert.Equal("refresh_token", grants[1]["grant_type"]);
+        Assert.Equal("rt-1", grants[1]["refresh_token"]);
+        Assert.Equal("client-1", grants[1]["client_id"]);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_FallsBackToBrowser_WhenRefreshFails()
+    {
+        int tokenCalls = 0;
+        var mockHttp = new MockHttpMessageHandler();
+        mockHttp
+            .When(HttpMethod.Post, TokenEndpoint)
+            .Respond(async req =>
+            {
+                string body = await req.Content!.ReadAsStringAsync();
+                tokenCalls++;
+                if (body.Contains("grant_type=refresh_token", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.BadRequest);
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        $"{{\"access_token\":\"t{tokenCalls}\",\"expires_in\":3600,\"refresh_token\":\"rt\"}}",
+                        Encoding.UTF8,
+                        "application/json"),
+                };
+            });
+        using HttpClient httpClient = mockHttp.ToHttpClient();
+
+        int browserLaunches = 0;
+        var callbacks = new List<Task>();
+        void OpenBrowser(Uri authUri)
+        {
+            browserLaunches++;
+            IReadOnlyDictionary<string, string> query = ParseQuery(authUri.Query);
+            callbacks.Add(SendCallbackAsync(query["redirect_uri"], "code", query["state"]));
+        }
+
+        var provider = new OAuthPkceAuthProvider(
+            CreateOptions(), httpClient, tokenCache: null, logger: null, openBrowser: OpenBrowser);
+
+        await provider.GetTokenAsync();
+        string second = await provider.GetTokenAsync();
+        await Task.WhenAll(callbacks);
+
+        Assert.Equal(2, browserLaunches);
+        Assert.Equal("t3", second); // code grant, failed refresh, code grant
+    }
+
     private static async Task SendCallbackAsync(string redirectUri, string code, string state)
     {
         string callbackUrl = $"{redirectUri}?code={Uri.EscapeDataString(code)}&state={Uri.EscapeDataString(state)}";

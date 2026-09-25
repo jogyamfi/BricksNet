@@ -23,7 +23,11 @@ public static class AuthProviderFactory
     /// HTTP client used for the OAuth token exchange. Required when using <see cref="AuthType.OAuthPkce"/>.
     /// Must not be the auth-injecting BricksNet pipeline client.
     /// </param>
-    /// <param name="tokenCache">Optional token cache for the OAuth flow.</param>
+    /// <param name="tokenCache">
+    /// Optional token cache for the OAuth flow. When omitted and
+    /// <see cref="OAuthOptions.PersistenceProvider"/> is set, an <see cref="OAuthTokenCache"/>
+    /// backed by that provider is used.
+    /// </param>
     /// <param name="loggerFactory">Optional logger factory.</param>
     /// <returns>The configured <see cref="IAuthProvider"/>.</returns>
     public static IAuthProvider Create(
@@ -50,6 +54,12 @@ public static class AuthProviderFactory
             case AuthType.OAuthPkce:
                 ArgumentNullException.ThrowIfNull(oauthOptions);
                 ArgumentNullException.ThrowIfNull(tokenExchangeClient);
+
+                // Honour OAuthOptions.PersistenceProvider when no explicit cache is supplied, so
+                // tokens survive process restarts.
+                tokenCache ??= oauthOptions.PersistenceProvider is { } persistence
+                    ? new OAuthTokenCache(persistence: persistence)
+                    : null;
 
                 var oauthProvider = new OAuthPkceAuthProvider(
                     oauthOptions,

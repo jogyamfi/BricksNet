@@ -44,39 +44,36 @@ internal static class FixtureLibrary
         await SeedCloudFetchAsync(root, baseUrl).ConfigureAwait(false);
     }
 
-    // ---- rest/execute_select: POST returns RUNNING, GET returns the terminal Arrow result ----
+    // ---- rest/execute_select: POST returns RUNNING, GET returns the terminal inline result ----
     private static async Task SeedExecuteSelectAsync(string root)
     {
         var dir = Path.Combine(root, "rest", "execute_select");
-        var arrow = await ArrowFixtures.BuildSampleTableAsync(SampleRows).ConfigureAwait(false);
 
         await WriteAsync(dir, 0, "POST", StatementsPath, JsonResponse(RunningBody(SelectStatementId)))
             .ConfigureAwait(false);
         await WriteAsync(
             dir, 1, "GET", $"{StatementsPath}/{SelectStatementId}",
-            JsonResponse(SampleSuccessBody(SelectStatementId, arrow))).ConfigureAwait(false);
+            JsonResponse(SampleSuccessBody(SelectStatementId))).ConfigureAwait(false);
     }
 
-    // ---- rest/execute_direct_results: POST returns the terminal Arrow result inline ----
+    // ---- rest/execute_direct_results: POST returns the terminal result inline ----
     private static async Task SeedExecuteDirectAsync(string root)
     {
         var dir = Path.Combine(root, "rest", "execute_direct_results");
-        var arrow = await ArrowFixtures.BuildSampleTableAsync(SampleRows).ConfigureAwait(false);
 
         await WriteAsync(
             dir, 0, "POST", StatementsPath,
-            JsonResponse(SampleSuccessBody(DirectStatementId, arrow))).ConfigureAwait(false);
+            JsonResponse(SampleSuccessBody(DirectStatementId))).ConfigureAwait(false);
     }
 
     // ---- adonet: identical shape, distinct statement id for isolation ----
     private static async Task SeedAdoNetAsync(string root)
     {
         var dir = Path.Combine(root, "adonet", "execute_reader");
-        var arrow = await ArrowFixtures.BuildSampleTableAsync(SampleRows).ConfigureAwait(false);
 
         await WriteAsync(
             dir, 0, "POST", StatementsPath,
-            JsonResponse(SampleSuccessBody(AdoStatementId, arrow))).ConfigureAwait(false);
+            JsonResponse(SampleSuccessBody(AdoStatementId))).ConfigureAwait(false);
     }
 
     // ---- cloudfetch: POST returns external links; two ordered chunk files are served separately ----
@@ -106,13 +103,14 @@ internal static class FixtureLibrary
         ["status"] = new JsonObject { ["state"] = "RUNNING" },
     };
 
-    private static JsonObject SampleSuccessBody(string statementId, byte[] arrow) => new()
+    // INLINE disposition only supports JSON_ARRAY: every cell is a JSON string (or null).
+    private static JsonObject SampleSuccessBody(string statementId) => new()
     {
         ["statement_id"] = statementId,
         ["status"] = new JsonObject { ["state"] = "SUCCEEDED" },
         ["manifest"] = new JsonObject
         {
-            ["format"] = "ARROW_STREAM",
+            ["format"] = "JSON_ARRAY",
             ["schema"] = new JsonObject
             {
                 ["column_count"] = 3,
@@ -130,9 +128,23 @@ internal static class FixtureLibrary
         {
             ["chunk_index"] = 0,
             ["row_count"] = SampleRows.Count,
-            ["data_array"] = Convert.ToBase64String(arrow),
+            ["data_array"] = SampleDataArray(),
         },
     };
+
+    private static JsonArray SampleDataArray()
+    {
+        var rows = new JsonArray();
+        foreach (var row in SampleRows)
+        {
+            rows.Add(new JsonArray(
+                JsonValue.Create(row.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                row.Name is null ? null : JsonValue.Create(row.Name),
+                JsonValue.Create(row.Active ? "true" : "false")));
+        }
+
+        return rows;
+    }
 
     private static JsonObject CloudFetchBody(string statementId, string baseUrl, int size0, int size1) => new()
     {

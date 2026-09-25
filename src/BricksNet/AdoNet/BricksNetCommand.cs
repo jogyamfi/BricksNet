@@ -191,7 +191,10 @@ public sealed class BricksNetCommand : DbCommand
                     .FetchChunkAsync<IReadOnlyDictionary<string, object?>>(chunkSize, cancellationToken)
                     .ConfigureAwait(false);
 
-        return new BricksNetDataReader(operation, firstChunk, chunkSize, behavior, _connection);
+        // Read after the first chunk so the page that carries the schema is fetched only once.
+        var schema = await operation.GetSchemaAsync(cancellationToken).ConfigureAwait(false);
+
+        return new BricksNetDataReader(operation, schema, firstChunk, chunkSize, behavior, _connection);
     }
 
     private int ResolveChunkSize(CommandBehavior behavior)

@@ -87,7 +87,8 @@ public sealed class RestSessionBackendTests
         """{"statement_id":"01ef-meta","status":{"state":"SUCCEEDED"}}""";
 
     private static (RestSessionBackend Backend, RestTestHandler Handler) CreateBackend(
-        BackendSessionOptions? options = null)
+        BackendSessionOptions? options = null,
+        bool useCloudFetch = false)
     {
         var handler = new RestTestHandler((_, _) => (HttpStatusCode.OK, SucceededJson));
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://fake.local") };
@@ -95,7 +96,7 @@ public sealed class RestSessionBackendTests
         var client = new SqlExecHttpClient(bricks);
         var poller = new RestStatementPoller(client);
         var backend = new RestSessionBackend(
-            client, poller, "wh-1", options ?? new BackendSessionOptions());
+            client, poller, "wh-1", options ?? new BackendSessionOptions(), useCloudFetch);
         return (backend, handler);
     }
 
@@ -163,6 +164,21 @@ public sealed class RestSessionBackendTests
 
         await Assert.ThrowsAsync<ArgumentException>(
             () => backend.GetColumnsAsync(null, null, null, null));
+    }
+
+    [Theory]
+    [InlineData(false, "INLINE", "JSON_ARRAY")]
+    [InlineData(true, "EXTERNAL_LINKS", "ARROW_STREAM")]
+    public async Task ExecuteStatementAsync_SelectsDispositionFromUseCloudFetch(
+        bool useCloudFetch, string disposition, string format)
+    {
+        var (backend, handler) = CreateBackend(useCloudFetch: useCloudFetch);
+
+        await backend.ExecuteStatementAsync("SELECT 1", options: null);
+
+        using var doc = JsonDocument.Parse(handler.Bodies[^1]!);
+        Assert.Equal(disposition, doc.RootElement.GetProperty("disposition").GetString());
+        Assert.Equal(format, doc.RootElement.GetProperty("format").GetString());
     }
 
     [Fact]

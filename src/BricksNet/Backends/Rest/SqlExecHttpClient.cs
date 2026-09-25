@@ -88,13 +88,18 @@ internal sealed class SqlExecHttpClient
         }
     }
 
-    /// <summary>Cancels a running statement (<c>DELETE /api/2.0/sql/statements/{id}</c>).</summary>
+    /// <summary>
+    /// Requests cancellation of a running statement
+    /// (<c>POST /api/2.0/sql/statements/{id}/cancel</c>). Cancellation is asynchronous on the
+    /// server; poll the statement to observe the terminal state.
+    /// </summary>
     public async Task CancelAsync(string statementId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(statementId);
 
+        using var content = new StringContent(string.Empty);
         using var response = await _httpClient
-            .DeleteAsync($"{StatementsPath}/{Uri.EscapeDataString(statementId)}", cancellationToken)
+            .PostAsync($"{StatementsPath}/{Uri.EscapeDataString(statementId)}/cancel", content, cancellationToken)
             .ConfigureAwait(false);
 
         await EnsureSuccessAsync(response, statementId, cancellationToken).ConfigureAwait(false);

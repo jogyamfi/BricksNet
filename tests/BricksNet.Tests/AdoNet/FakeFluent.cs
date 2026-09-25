@@ -42,6 +42,8 @@ internal static class FakeFluent
 
         public Exception? WaitFailure { get; set; }
 
+        public IReadOnlyList<ColumnInfo> Schema { get; set; } = [];
+
         public FakeOperation? LastOperation { get; private set; }
 
         public Task<IBricksNetOperation> ExecuteStatementAsync(
@@ -49,7 +51,7 @@ internal static class FakeFluent
             StatementOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            LastOperation = new FakeOperation(rows) { WaitFailure = WaitFailure };
+            LastOperation = new FakeOperation(rows) { WaitFailure = WaitFailure, Schema = Schema };
             return Task.FromResult<IBricksNetOperation>(LastOperation);
         }
 
@@ -124,6 +126,11 @@ internal static class FakeFluent
             Waited = true;
             return WaitFailure is null ? Task.CompletedTask : Task.FromException(WaitFailure);
         }
+
+        public IReadOnlyList<ColumnInfo> Schema { get; init; } = [];
+
+        public Task<IReadOnlyList<ColumnInfo>> GetSchemaAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Schema);
 
         public Task<QueryStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(QueryStatus.Succeeded);

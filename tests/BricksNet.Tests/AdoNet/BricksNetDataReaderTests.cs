@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using BricksNet.Contracts;
+using BricksNet.Results;
 using Xunit;
 
 namespace BricksNet.AdoNet;
@@ -49,7 +50,7 @@ public sealed class BricksNetDataReaderTests
             .FetchChunkAsync<IReadOnlyDictionary<string, object?>>(10_000)
             .GetAwaiter()
             .GetResult();
-        return new BricksNetDataReader(operation, first, 10_000, behavior, connectionToClose);
+        return new BricksNetDataReader(operation, [], first, 10_000, behavior, connectionToClose);
     }
 
     [Fact]
@@ -280,11 +281,60 @@ public sealed class BricksNetDataReaderTests
         var first = await operation.FetchChunkAsync<IReadOnlyDictionary<string, object?>>(10_000);
         var connection = new BricksNetConnection();
         using var reader = new BricksNetDataReader(
-            operation, first, 10_000, CommandBehavior.CloseConnection, connection);
+            operation, [], first, 10_000, CommandBehavior.CloseConnection, connection);
 
         await reader.CloseAsync();
 
         Assert.True(operation.Closed);
         Assert.True(reader.IsClosed);
+    }
+
+    // ---- server-reported schema ----
+
+    private static ColumnInfo Col(int ordinal, string name, string type, int? precision = null, int? scale = null) =>
+        new(name, type, ordinal, IsNullable: true, precision, scale);
+
+    [Fact]
+    public void Schema_EmptyResult_StillExposesColumns()
+    {
+        var operation = new FakeFluent.FakeOperation([]);
+        var schema = new[] { Col(0, "id", "INT"), Col(1, "amount", "DECIMAL", 10, 2) };
+        using var reader = new BricksNetDataReader(operation, schema, [], 10_000, CommandBehavior.Default, null);
+
+        Assert.False(reader.HasRows);
+        Assert.Equal(2, reader.FieldCount);
+        Assert.Equal("amount", reader.GetName(1));
+        Assert.Equal(typeof(decimal), reader.GetFieldType(1));
+        Assert.Equal("DECIMAL", reader.GetDataTypeName(1));
+
+        var table = reader.GetSchemaTable();
+        Assert.Equal((short)10, table.Rows[1][SchemaTableColumn.NumericPrecision]);
+        Assert.Equal((short)2, table.Rows[1][SchemaTableColumn.NumericScale]);
+    }
+
+    [Fact]
+    public void Schema_AllNullColumn_UsesDeclaredType()
+    {
+        var rows = FakeFluent.Rows(FakeFluent.Row(("id", 1), ("ts", null)));
+        var operation = new FakeFluent.FakeOperation(rows);
+        var schema = new[] { Col(0, "id", "INT"), Col(1, "ts", "TIMESTAMP") };
+        using var reader = new BricksNetDataReader(operation, schema, rows, 10_000, CommandBehavior.Default, null);
+
+        Assert.Equal(typeof(DateTimeOffset), reader.GetFieldType(1));
+        Assert.Equal(typeof(int), reader.GetFieldType(0));
+    }
+
+    [Fact]
+    public void Schema_DuplicateNames_MatchSuffixedRowKeys()
+    {
+        var rows = FakeFluent.Rows(FakeFluent.Row(("id", 1), ("id_1", 2)));
+        var operation = new FakeFluent.FakeOperation(rows);
+        var schema = new[] { Col(0, "id", "INT"), Col(1, "id", "INT") };
+        using var reader = new BricksNetDataReader(operation, schema, rows, 10_000, CommandBehavior.Default, null);
+
+        Assert.True(reader.Read());
+        Assert.Equal(2, reader.FieldCount);
+        Assert.Equal(1, reader.GetInt32(0));
+        Assert.Equal(2, reader.GetInt32(1));
     }
 }

@@ -30,6 +30,7 @@ public sealed class BricksNetOperation : IBricksNetOperation
     private readonly Queue<IReadOnlyDictionary<string, object?>> _buffer = new();
 
     private IResultsProvider? _provider;
+    private IReadOnlyList<ColumnInfo>? _schema;
     private bool _backendHasMoreRows = true;
     private bool _completed;
     private bool _closed;
@@ -89,6 +90,22 @@ public sealed class BricksNetOperation : IBricksNetOperation
     {
         ThrowIfClosed();
         return EnsureCompletedAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ColumnInfo>> GetSchemaAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfClosed();
+        await EnsureCompletedAsync(cancellationToken).ConfigureAwait(false);
+
+        // The schema travels with each result page; fetch the first page if none has been read yet.
+        // Its rows stay in the provider for subsequent fetches.
+        if (_schema is null && _backendHasMoreRows)
+        {
+            await FetchNextPageAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return _schema ?? Array.Empty<ColumnInfo>();
     }
 
     /// <inheritdoc />
@@ -211,6 +228,10 @@ public sealed class BricksNetOperation : IBricksNetOperation
         ReleaseProvider();
         _provider = ResultHandlerFactory.Create(fetch);
         _backendHasMoreRows = fetch.HasMoreRows;
+        if (_schema is null || fetch.Schema.Count > 0)
+        {
+            _schema = fetch.Schema;
+        }
     }
 
     private void ReleaseProvider()

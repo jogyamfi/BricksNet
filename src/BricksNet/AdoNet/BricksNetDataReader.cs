@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using BricksNet.Contracts;
+using BricksNet.Results;
 
 namespace BricksNet.AdoNet;
 
@@ -28,6 +29,7 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
 
     internal BricksNetDataReader(
         IBricksNetOperation operation,
+        IReadOnlyList<ColumnInfo> schema,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> firstChunk,
         int chunkSize,
         CommandBehavior behavior,
@@ -38,7 +40,7 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
         _chunkSize = chunkSize <= 0 ? 10_000 : chunkSize;
         _behavior = behavior;
         _connectionToClose = connectionToClose;
-        _columns = InferColumns(firstChunk);
+        _columns = schema.Count > 0 ? BuildColumns(schema, firstChunk) : InferColumns(firstChunk);
         _exhausted = firstChunk.Count == 0;
     }
 
@@ -299,8 +301,8 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
             row[SchemaTableColumn.ColumnName] = column.Name;
             row[SchemaTableColumn.ColumnOrdinal] = i;
             row[SchemaTableColumn.ColumnSize] = -1;
-            row[SchemaTableColumn.NumericPrecision] = DBNull.Value;
-            row[SchemaTableColumn.NumericScale] = DBNull.Value;
+            row[SchemaTableColumn.NumericPrecision] = column.Precision is { } precision ? (short)precision : DBNull.Value;
+            row[SchemaTableColumn.NumericScale] = column.Scale is { } scale ? (short)scale : DBNull.Value;
             row[SchemaTableColumn.DataType] = column.ClrType;
             row[SchemaTableColumn.ProviderType] = 0;
             row[SchemaTableColumn.IsLong] = column.ClrType == typeof(byte[]) || column.ClrType == typeof(string);
@@ -396,6 +398,63 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
         }
     }
 
+    /// <summary>
+    /// Builds columns from the server-reported schema so names, SQL type names, precision and scale
+    /// are available even for empty results or columns whose sampled values are all NULL. The CLR
+    /// type prefers the type actually observed in <paramref name="firstChunk"/>, because some
+    /// backends deliver values (e.g. complex types) in a representation other than the declared one.
+    /// </summary>
+    private static IReadOnlyList<Column> BuildColumns(
+        IReadOnlyList<ColumnInfo> schema,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> firstChunk)
+    {
+        var names = ColumnNames.MakeUnique(schema.Select(column => column.Name).ToArray());
+        var columns = new Column[schema.Count];
+        for (var i = 0; i < schema.Count; i++)
+        {
+            var info = schema[i];
+            var clrType = ObservedType(firstChunk, names[i]) ?? MapClrType(info.TypeName);
+            columns[i] = new Column(names[i], clrType, info.TypeName, info.Precision, info.Scale);
+        }
+
+        return columns;
+    }
+
+    private static Type? ObservedType(IReadOnlyList<IReadOnlyDictionary<string, object?>> chunk, string name)
+    {
+        foreach (var row in chunk)
+        {
+            if (row.TryGetValue(name, out var value) && value is not null)
+            {
+                return value.GetType();
+            }
+        }
+
+        return null;
+    }
+
+    private static Type MapClrType(string typeName)
+    {
+        var parenIndex = typeName.IndexOf('(', StringComparison.Ordinal);
+        var bare = (parenIndex >= 0 ? typeName[..parenIndex] : typeName).Trim().ToUpperInvariant();
+        return bare switch
+        {
+            "BOOLEAN" => typeof(bool),
+            "TINYINT" or "BYTE" => typeof(sbyte),
+            "SMALLINT" or "SHORT" => typeof(short),
+            "INT" or "INTEGER" => typeof(int),
+            "BIGINT" or "LONG" => typeof(long),
+            "FLOAT" or "REAL" => typeof(float),
+            "DOUBLE" => typeof(double),
+            "DECIMAL" or "NUMERIC" => typeof(decimal),
+            "STRING" or "VARCHAR" or "CHAR" => typeof(string),
+            "DATE" => typeof(DateOnly),
+            "TIMESTAMP" or "TIMESTAMP_NTZ" => typeof(DateTimeOffset),
+            "BINARY" => typeof(byte[]),
+            _ => typeof(object),
+        };
+    }
+
     private static IReadOnlyList<Column> InferColumns(
         IReadOnlyList<IReadOnlyDictionary<string, object?>> chunk)
     {
@@ -418,7 +477,7 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
                 }
             }
 
-            columns[i] = new Column(names[i], clrType, MapDataTypeName(clrType));
+            columns[i] = new Column(names[i], clrType, MapDataTypeName(clrType), Precision: null, Scale: null);
         }
 
         return columns;
@@ -443,7 +502,12 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
         _ => "STRING",
     };
 
-    private readonly record struct Column(string Name, Type ClrType, string DataTypeName);
+    private readonly record struct Column(
+        string Name,
+        Type ClrType,
+        string DataTypeName,
+        int? Precision,
+        int? Scale);
 
     private sealed class AsyncRecordEnumerator(BricksNetDataReader reader, CancellationToken cancellationToken)
         : IAsyncEnumerator<IDataRecord>

@@ -94,7 +94,7 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
 
         _nextChunkIndex = chunk?.NextChunkIndex ?? chunk?.ExternalLinks?.LastOrDefault()?.NextChunkIndex;
 
-        return BuildFetchResult(chunk, response.Manifest, schema) with
+        return BuildFetchResult(chunk, schema) with
         {
             HasMoreRows = _nextChunkIndex is not null,
         };
@@ -148,10 +148,7 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
     [GeneratedRegex(@"SQLSTATE:\s*([0-9A-Z]{5})", RegexOptions.CultureInvariant)]
     private static partial Regex SqlStateRegex();
 
-    private static FetchResult BuildFetchResult(
-        ResultData? result,
-        ResultManifest? manifest,
-        IReadOnlyList<ColumnInfo> schema)
+    private static FetchResult BuildFetchResult(ResultData? result, IReadOnlyList<ColumnInfo> schema)
     {
         if (result is null)
         {
@@ -163,13 +160,10 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
             return new FetchResult(ResultFormat.CloudFetch, ReadOnlyMemory<byte>.Empty, MapLinks(links), schema);
         }
 
-        return BuildInlineResult(result, manifest, schema);
+        return BuildInlineResult(result, schema);
     }
 
-    private static FetchResult BuildInlineResult(
-        ResultData result,
-        ResultManifest? manifest,
-        IReadOnlyList<ColumnInfo> schema)
+    private static FetchResult BuildInlineResult(ResultData result, IReadOnlyList<ColumnInfo> schema)
     {
         if (result.Data is not { } data ||
             data.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
@@ -177,20 +171,10 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
             return new FetchResult(ResultFormat.Arrow, ReadOnlyMemory<byte>.Empty, ExternalLinks: null, schema);
         }
 
-        // ARROW_STREAM inline payloads arrive base64-encoded as a JSON string.
-        if (data.ValueKind == JsonValueKind.String)
-        {
-            var base64 = data.GetString() ?? string.Empty;
-            ReadOnlyMemory<byte> arrow = base64.Length == 0
-                ? ReadOnlyMemory<byte>.Empty
-                : Convert.FromBase64String(base64);
-            return new FetchResult(ResultFormat.Arrow, arrow, ExternalLinks: null, schema);
-        }
-
-        // JSON_ARRAY inline payloads arrive as a JSON array of row arrays.
-        var format = MapInlineFormat(manifest?.Format);
+        // INLINE results are always JSON_ARRAY (ARROW_STREAM requires EXTERNAL_LINKS): a JSON array
+        // of row arrays.
         var payload = Encoding.UTF8.GetBytes(data.GetRawText());
-        return new FetchResult(format, payload, ExternalLinks: null, schema);
+        return new FetchResult(ResultFormat.JsonColumnar, payload, ExternalLinks: null, schema);
     }
 
     private static IReadOnlyList<ColumnInfo> BuildSchema(ResultManifest? manifest)
@@ -245,10 +229,6 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
             ? parsed
             : DateTimeOffset.MaxValue;
 
-    private static ResultFormat MapInlineFormat(string? manifestFormat) =>
-        string.Equals(manifestFormat, "ARROW_STREAM", StringComparison.OrdinalIgnoreCase)
-            ? ResultFormat.Arrow
-            : ResultFormat.JsonColumnar;
 
     private static QueryStatus MapState(StatementState state) => state switch
     {

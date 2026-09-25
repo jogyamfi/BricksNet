@@ -37,6 +37,10 @@ public sealed class OAuthPkceAuthProvider : IAuthProvider, ISupportsTokenExpiry
     private readonly Action<Uri> _openBrowser;
     private readonly string _cacheKey;
 
+    // The refresh token is held in memory only; it lets an expired access token be renewed
+    // silently instead of re-running the interactive browser flow.
+    private string? _refreshToken;
+
     /// <summary>Creates the provider.</summary>
     /// <param name="options">OAuth endpoints, client id, scopes, and redirect configuration.</param>
     /// <param name="httpClient">
@@ -83,6 +87,11 @@ public sealed class OAuthPkceAuthProvider : IAuthProvider, ISupportsTokenExpiry
             throw new ArgumentException("Invalid redirect port range.", nameof(options));
         }
 
+        if (!IsLoopbackHost(options.RedirectHost))
+        {
+            throw new ArgumentException("RedirectHost must be 'localhost' or a loopback address.", nameof(options));
+        }
+
         _tokenCache = tokenCache;
         _logger = logger ?? NullLogger<OAuthPkceAuthProvider>.Instance;
         _openBrowser = openBrowser ?? LaunchSystemBrowser;
@@ -113,8 +122,44 @@ public sealed class OAuthPkceAuthProvider : IAuthProvider, ISupportsTokenExpiry
             }
         }
 
+        if (_refreshToken is { } refreshToken)
+        {
+            AccessToken? refreshed = await TryRefreshAsync(refreshToken, cancellationToken).ConfigureAwait(false);
+            if (refreshed is { } token)
+            {
+                return token;
+            }
+        }
+
         return await RunAuthorizationCodeFlowAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    private async Task<AccessToken?> TryRefreshAsync(string refreshToken, CancellationToken cancellationToken)
+    {
+        var form = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["grant_type"] = "refresh_token",
+            ["refresh_token"] = refreshToken,
+            ["client_id"] = _options.ClientId,
+        };
+
+        try
+        {
+            _logger.LogDebug("Refreshing OAuth access token with the refresh token.");
+            return await RequestTokenAsync(form, cancellationToken).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // Revoked or expired refresh token: discard it and fall back to interactive login.
+            _logger.LogInformation("OAuth token refresh failed; falling back to interactive authorization.");
+            _refreshToken = null;
+            return null;
+        }
+    }
+
+    private static bool IsLoopbackHost(string host) =>
+        string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+        || (IPAddress.TryParse(host, out IPAddress? address) && IPAddress.IsLoopback(address));
 
     private async Task<AccessToken> RunAuthorizationCodeFlowAsync(CancellationToken cancellationToken)
     {
@@ -136,8 +181,9 @@ public sealed class OAuthPkceAuthProvider : IAuthProvider, ISupportsTokenExpiry
         string state = RandomNumberGenerator.GetHexString(32);
 
         using var listener = new HttpListener();
-        int port = StartLoopbackListener(listener, _options.RedirectPort, _options.RedirectPortScanLimit);
-        var redirectUri = new Uri($"http://127.0.0.1:{port}/");
+        int port = StartLoopbackListener(
+            listener, _options.RedirectHost, _options.RedirectPort, _options.RedirectPortScanLimit);
+        var redirectUri = new Uri($"http://{_options.RedirectHost}:{port}/");
 
         try
         {
@@ -168,12 +214,12 @@ public sealed class OAuthPkceAuthProvider : IAuthProvider, ISupportsTokenExpiry
         }
     }
 
-    private static int StartLoopbackListener(HttpListener listener, int startPort, int endPort)
+    private static int StartLoopbackListener(HttpListener listener, string host, int startPort, int endPort)
     {
         for (int port = startPort; port <= endPort; port++)
         {
             listener.Prefixes.Clear();
-            listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            listener.Prefixes.Add($"http://{host}:{port}/");
             try
             {
                 listener.Start();
@@ -278,6 +324,17 @@ public sealed class OAuthPkceAuthProvider : IAuthProvider, ISupportsTokenExpiry
             ["code_verifier"] = codeVerifier,
         };
 
+        return await RequestTokenAsync(form, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// POSTs a token request (authorization-code or refresh-token grant), records any rotated
+    /// refresh token, and stores the access token in the cache when one is configured.
+    /// </summary>
+    private async Task<AccessToken> RequestTokenAsync(
+        Dictionary<string, string> form,
+        CancellationToken cancellationToken)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Post, _options.TokenEndpoint)
         {
             Content = new FormUrlEncodedContent(form),
@@ -301,6 +358,12 @@ public sealed class OAuthPkceAuthProvider : IAuthProvider, ISupportsTokenExpiry
         if (token is null || string.IsNullOrEmpty(token.AccessToken))
         {
             throw new InvalidOperationException("OAuth token endpoint returned no access token.");
+        }
+
+        // Keep the previous refresh token when the server does not rotate it.
+        if (!string.IsNullOrEmpty(token.RefreshToken))
+        {
+            _refreshToken = token.RefreshToken;
         }
 
         DateTimeOffset expiresAt = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(0, token.ExpiresInSeconds));

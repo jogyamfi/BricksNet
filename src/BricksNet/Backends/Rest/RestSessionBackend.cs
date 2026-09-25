@@ -14,8 +14,12 @@ namespace BricksNet.Backends.Rest;
 /// </summary>
 internal sealed class RestSessionBackend : ISessionBackend
 {
-    private const string Disposition = "INLINE";
-    private const string Format = "JSON_ARRAY";
+    // INLINE supports only JSON_ARRAY and aborts results over 25 MiB; EXTERNAL_LINKS (CloudFetch)
+    // supports ARROW_STREAM and results up to 100 GiB.
+    private const string InlineDisposition = "INLINE";
+    private const string InlineFormat = "JSON_ARRAY";
+    private const string ExternalLinksDisposition = "EXTERNAL_LINKS";
+    private const string ExternalLinksFormat = "ARROW_STREAM";
     private const string OnWaitTimeout = "CONTINUE";
     private const int DefaultWaitSeconds = 10;
     private const int MinWaitSeconds = 5;
@@ -25,17 +29,20 @@ internal sealed class RestSessionBackend : ISessionBackend
     private readonly RestStatementPoller _poller;
     private readonly string _warehouseId;
     private readonly BackendSessionOptions _sessionOptions;
+    private readonly bool _useCloudFetch;
 
     public RestSessionBackend(
         SqlExecHttpClient client,
         RestStatementPoller poller,
         string warehouseId,
-        BackendSessionOptions sessionOptions)
+        BackendSessionOptions sessionOptions,
+        bool useCloudFetch = false)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _poller = poller ?? throw new ArgumentNullException(nameof(poller));
         _warehouseId = warehouseId ?? throw new ArgumentNullException(nameof(warehouseId));
         _sessionOptions = sessionOptions ?? throw new ArgumentNullException(nameof(sessionOptions));
+        _useCloudFetch = useCloudFetch;
         Id = Guid.NewGuid().ToString();
     }
 
@@ -136,8 +143,8 @@ internal sealed class RestSessionBackend : ISessionBackend
             Catalog = options?.Catalog ?? _sessionOptions.Catalog,
             Schema = options?.Schema ?? _sessionOptions.Schema,
             Parameters = MapParameters(options?.Parameters),
-            Disposition = Disposition,
-            Format = Format,
+            Disposition = _useCloudFetch ? ExternalLinksDisposition : InlineDisposition,
+            Format = _useCloudFetch ? ExternalLinksFormat : InlineFormat,
             WaitTimeout = FormatWaitTimeout(timeoutSeconds),
             OnWaitTimeout = OnWaitTimeout,
         };
