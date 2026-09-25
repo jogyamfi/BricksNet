@@ -183,7 +183,8 @@ public sealed class RestSessionBackendTests
         Assert.Equal("SELECT 1", root.GetProperty("statement").GetString());
         Assert.Equal("main", root.GetProperty("catalog").GetString());
         Assert.Equal("default", root.GetProperty("schema").GetString());
-        Assert.Equal(500, root.GetProperty("row_limit").GetInt32());
+        // MaxRows is a client page size; sending it as row_limit would truncate results server-side.
+        Assert.False(root.TryGetProperty("row_limit", out _));
     }
 
     [Fact]

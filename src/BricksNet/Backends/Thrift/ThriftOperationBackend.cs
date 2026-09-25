@@ -12,11 +12,12 @@ namespace BricksNet.Backends.Thrift;
 /// fetching materialises Arrow inline batches and CloudFetch links; legacy
 /// row/column result sets are reported as unsupported (refined in Phase 7).
 /// </summary>
-internal sealed class ThriftOperationBackend : IOperationBackend
+internal sealed class ThriftOperationBackend : IOperationBackend, IOperationFailureSource
 {
     private readonly TCLIServiceClient _client;
     private readonly TOperationHandle _operationHandle;
 
+    private TGetOperationStatusResp? _failedStatus;
     private TGetResultSetMetadataResp? _metadata;
     private IReadOnlyList<ColumnInfo>? _schema;
     private bool _closed;
@@ -35,7 +36,29 @@ internal sealed class ThriftOperationBackend : IOperationBackend
         var request = new TGetOperationStatusReq { OperationHandle = _operationHandle };
         var response = await _client.GetOperationStatusAsync(request, cancellationToken).ConfigureAwait(false);
         ThriftStatusChecker.EnsureSuccess(response.Status, Id);
-        return MapState(response.OperationState);
+
+        var state = MapState(response.OperationState);
+        if (state == QueryStatus.Failed)
+        {
+            _failedStatus = response;
+        }
+
+        return state;
+    }
+
+    public BricksNetException? CreateFailureException()
+    {
+        if (_failedStatus is not { } status)
+        {
+            return null;
+        }
+
+        var message = !string.IsNullOrWhiteSpace(status.DisplayMessage) ? status.DisplayMessage
+            : !string.IsNullOrWhiteSpace(status.ErrorMessage) ? status.ErrorMessage
+            : status.OperationState == TOperationState.TimedoutState ? "The statement timed out."
+            : "The statement failed without an error message.";
+
+        return new BricksNetException(message, status.SqlState, status.ErrorCode ?? 0, Id);
     }
 
     public async Task<FetchResult> FetchResultsAsync(FetchOptions options)
@@ -58,15 +81,16 @@ internal sealed class ThriftOperationBackend : IOperationBackend
         ThriftStatusChecker.EnsureSuccess(response.Status, Id);
 
         var rowSet = response.Results;
+        var hasMoreRows = response.HasMoreRows;
 
         if (rowSet?.ResultLinks is { Count: > 0 } links)
         {
-            return new FetchResult(ResultFormat.CloudFetch, ReadOnlyMemory<byte>.Empty, MapLinks(links), schema);
+            return new FetchResult(ResultFormat.CloudFetch, ReadOnlyMemory<byte>.Empty, MapLinks(links), schema, hasMoreRows);
         }
 
         if (rowSet?.ArrowBatches is { Count: > 0 } batches)
         {
-            return new FetchResult(ResultFormat.Arrow, BuildArrowPayload(metadata, batches), null, schema);
+            return new FetchResult(ResultFormat.Arrow, BuildArrowPayload(metadata, batches), null, schema, hasMoreRows);
         }
 
         if (rowSet?.HasColumnarData == true)
@@ -77,7 +101,7 @@ internal sealed class ThriftOperationBackend : IOperationBackend
         }
 
         // No rows in this chunk.
-        return new FetchResult(ResultFormat.Arrow, ReadOnlyMemory<byte>.Empty, null, schema);
+        return new FetchResult(ResultFormat.Arrow, ReadOnlyMemory<byte>.Empty, null, schema, hasMoreRows);
     }
 
     public async Task CancelAsync(CancellationToken cancellationToken = default)

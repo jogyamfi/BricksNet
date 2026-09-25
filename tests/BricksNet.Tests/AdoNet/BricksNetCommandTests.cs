@@ -168,6 +168,35 @@ public sealed class BricksNetCommandTests : IDisposable
         Assert.Equal(1, reader.GetInt32(reader.GetOrdinal("id")));
     }
 
+    [Fact]
+    public async Task ExecuteNonQuery_WaitsForCompletion_BeforeClosing()
+    {
+        using var connection = NewOpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO t VALUES (1)";
+
+        await command.ExecuteNonQueryAsync();
+
+        var operation = ((FakeFluent.FakeSession)connection.GetOpenSession()).LastOperation!;
+        Assert.True(operation.Waited);
+        Assert.True(operation.Closed);
+    }
+
+    [Fact]
+    public async Task ExecuteNonQuery_StatementFails_Throws_AndCloses()
+    {
+        using var connection = NewOpenConnection();
+        var session = (FakeFluent.FakeSession)connection.GetOpenSession();
+        session.WaitFailure = new BricksNetException("boom", "42P01", 0, "q-1");
+        using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO missing VALUES (1)";
+
+        var ex = await Assert.ThrowsAsync<BricksNetException>(() => command.ExecuteNonQueryAsync());
+
+        Assert.Equal("42P01", ex.SqlState);
+        Assert.True(session.LastOperation!.Closed);
+    }
+
     private sealed class FakeDbConnection : DbConnection
     {
         [AllowNull]

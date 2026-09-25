@@ -29,6 +29,30 @@ public class JsonResultHandlerTests
         Assert.Empty(rows);
     }
 
+    // ---- duplicate column names ----
+
+    [Fact]
+    public async Task DuplicateColumnNames_AreSuffixed_SoNoValueIsLost()
+    {
+        var json = Utf8("[[\"1\", \"2\", \"3\"]]");
+        var schema = new[] { Col(0, "id", "INT"), Col(1, "id", "INT"), Col(2, "id_1", "INT") };
+        var handler = new JsonResultHandler(json, schema);
+
+        var row = Assert.Single(await handler.FetchNextChunkAsync());
+
+        Assert.Equal(3, row.Count);
+        Assert.Equal(1, row["id"]);
+        Assert.Equal(2, row["id_2"]);   // "id_1" is already taken by a real column
+        Assert.Equal(3, row["id_1"]);
+    }
+
+    [Fact]
+    public void ColumnNames_MakeUnique_LeavesDistinctNamesUnchanged()
+    {
+        Assert.Equal(new[] { "a", "b", "c" }, ColumnNames.MakeUnique(new[] { "a", "b", "c" }));
+        Assert.Equal(new[] { "a", "a_1", "a_2" }, ColumnNames.MakeUnique(new[] { "a", "a", "a" }));
+    }
+
     // ---- basic int + string parsing ----
 
     [Fact]

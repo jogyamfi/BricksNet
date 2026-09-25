@@ -16,7 +16,10 @@ public interface IOperationBackend
     /// <summary>Polls the server for the current execution status.</summary>
     Task<QueryStatus> GetStatusAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Fetches the next chunk of results according to <paramref name="options"/>.</summary>
+    /// <summary>
+    /// Fetches the next page of results according to <paramref name="options"/>. Call repeatedly
+    /// while the returned <see cref="FetchResult.HasMoreRows"/> is <see langword="true"/>.
+    /// </summary>
     Task<FetchResult> FetchResultsAsync(FetchOptions options);
 
     /// <summary>Requests cancellation of the in-flight operation.</summary>

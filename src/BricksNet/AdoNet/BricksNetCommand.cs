@@ -119,7 +119,17 @@ public sealed class BricksNetCommand : DbCommand
             .ConfigureAwait(false);
         _activeOperation = operation;
 
-        await operation.CloseAsync().ConfigureAwait(false);
+        try
+        {
+            // Wait for the statement to finish before closing it: closing a still-running Thrift
+            // operation aborts it, and a failed statement must surface as an exception.
+            await operation.WaitForCompletionAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await operation.CloseAsync().ConfigureAwait(false);
+        }
+
         return -1;
     }
 

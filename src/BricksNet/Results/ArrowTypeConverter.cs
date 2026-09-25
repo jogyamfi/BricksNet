@@ -18,9 +18,16 @@ internal static class ArrowTypeConverter
     {
         ArgumentNullException.ThrowIfNull(batch);
 
-        var fields = batch.Schema.FieldsList;
         var columnCount = batch.ColumnCount;
         var rowCount = batch.Length;
+        var fields = batch.Schema.FieldsList;
+        var names = new string[columnCount];
+        for (var col = 0; col < columnCount; col++)
+        {
+            names[col] = fields[col].Name;
+        }
+
+        names = ColumnNames.MakeUnique(names);
 
         var rows = new List<IReadOnlyDictionary<string, object?>>(rowCount);
         for (var row = 0; row < rowCount; row++)
@@ -28,7 +35,7 @@ internal static class ArrowTypeConverter
             var record = new Dictionary<string, object?>(columnCount, StringComparer.Ordinal);
             for (var col = 0; col < columnCount; col++)
             {
-                record[fields[col].Name] = ConvertValue(batch.Column(col), row);
+                record[names[col]] = ConvertValue(batch.Column(col), row);
             }
 
             rows.Add(record);

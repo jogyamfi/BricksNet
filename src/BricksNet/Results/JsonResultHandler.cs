@@ -14,6 +14,7 @@ public sealed class JsonResultHandler : IResultsProvider
 {
     private readonly ReadOnlyMemory<byte> _payload;
     private readonly IReadOnlyList<ColumnInfo> _schema;
+    private readonly string[] _names;
     private bool _hasMoreRows;
 
     /// <summary>Creates a handler over a buffered JSON payload and its column schema.</summary>
@@ -22,6 +23,7 @@ public sealed class JsonResultHandler : IResultsProvider
         ArgumentNullException.ThrowIfNull(schema);
         _payload = payload;
         _schema = schema;
+        _names = ColumnNames.MakeUnique(schema.Select(column => column.Name).ToArray());
         _hasMoreRows = !payload.IsEmpty;
     }
 
@@ -65,8 +67,8 @@ public sealed class JsonResultHandler : IResultsProvider
                     break;
                 }
 
-                var column = _schema[ordinal++];
-                record[column.Name] = Coerce(cell, column.TypeName);
+                record[_names[ordinal]] = Coerce(cell, _schema[ordinal].TypeName);
+                ordinal++;
             }
 
             rows.Add(record);

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BricksNet.AdoNet;
 using BricksNet.Backends.Rest.Dto;
 using BricksNet.Contracts;
@@ -14,12 +15,15 @@ namespace BricksNet.Backends.Rest;
 /// Waits for the statement to reach a terminal state (reusing the embedded direct result when
 /// available), then materialises inline Arrow/JSON payloads or CloudFetch external links.
 /// </summary>
-internal sealed class RestOperationBackend : IOperationBackend
+internal sealed partial class RestOperationBackend : IOperationBackend, IOperationFailureSource
 {
     private readonly SqlExecHttpClient _client;
     private readonly RestStatementPoller _poller;
 
     private ExecuteStatementResponse? _terminalResponse;
+    private IReadOnlyList<ColumnInfo>? _schema;
+    private bool _firstChunkConsumed;
+    private long? _nextChunkIndex;
 
     public RestOperationBackend(
         SqlExecHttpClient client,
@@ -65,9 +69,41 @@ internal sealed class RestOperationBackend : IOperationBackend
 
         EnsureNotFailed(response);
 
-        var schema = BuildSchema(response.Manifest);
-        return BuildFetchResult(response.Result, response.Manifest, schema);
+        var schema = _schema ??= BuildSchema(response.Manifest);
+
+        ResultData? chunk;
+        if (!_firstChunkConsumed)
+        {
+            // The terminal statement response embeds chunk 0; fetch it explicitly only when the
+            // manifest reports chunks but the response carried none.
+            _firstChunkConsumed = true;
+            chunk = response.Result;
+            if (chunk is null && response.Manifest is { TotalChunkCount: > 0 })
+            {
+                chunk = await _client.GetChunkAsync(Id, 0, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        else if (_nextChunkIndex is { } next)
+        {
+            chunk = await _client.GetChunkAsync(Id, next, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            return new FetchResult(ResultFormat.Arrow, ReadOnlyMemory<byte>.Empty, ExternalLinks: null, schema);
+        }
+
+        _nextChunkIndex = chunk?.NextChunkIndex ?? chunk?.ExternalLinks?.LastOrDefault()?.NextChunkIndex;
+
+        return BuildFetchResult(chunk, response.Manifest, schema) with
+        {
+            HasMoreRows = _nextChunkIndex is not null,
+        };
     }
+
+    public BricksNetException? CreateFailureException() =>
+        _terminalResponse is { Status.State: StatementState.Failed } response
+            ? BuildFailureException(response.Status.Error)
+            : null;
 
     public Task CancelAsync(CancellationToken cancellationToken = default) =>
         _client.CancelAsync(Id, cancellationToken);
@@ -86,10 +122,31 @@ internal sealed class RestOperationBackend : IOperationBackend
             return;
         }
 
-        var error = response.Status.Error;
-        var message = error?.Message ?? "The statement failed without an error message.";
-        throw new BricksNetException(message, sqlState: null, errorCode: 0, queryId: Id);
+        throw BuildFailureException(response.Status.Error);
     }
+
+    private BricksNetException BuildFailureException(ServiceError? error)
+    {
+        var message = string.IsNullOrWhiteSpace(error?.Message)
+            ? "The statement failed without an error message."
+            : error.Message;
+
+        // The REST error code is symbolic (e.g. "BAD_REQUEST"), so it is carried in the message;
+        // the SQLSTATE, when present, is embedded in the message text by the server.
+        if (!string.IsNullOrEmpty(error?.ErrorCode))
+        {
+            message = $"[{error.ErrorCode}] {message}";
+        }
+
+        var sqlState = SqlStateRegex().Match(message) is { Success: true } match
+            ? match.Groups[1].Value
+            : null;
+
+        return new BricksNetException(message, sqlState, errorCode: 0, queryId: Id);
+    }
+
+    [GeneratedRegex(@"SQLSTATE:\s*([0-9A-Z]{5})", RegexOptions.CultureInvariant)]
+    private static partial Regex SqlStateRegex();
 
     private static FetchResult BuildFetchResult(
         ResultData? result,

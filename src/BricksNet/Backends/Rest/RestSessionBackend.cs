@@ -125,7 +125,8 @@ internal sealed class RestSessionBackend : ISessionBackend
 
     private ExecuteStatementRequest BuildRequest(string sql, StatementOptions? options)
     {
-        var maxRows = options?.MaxRows ?? _sessionOptions.MaxRows;
+        // MaxRows is a client-side page size, not a server-side row cap, so row_limit is never
+        // sent: doing so would silently truncate every result set to MaxRows rows.
         var timeoutSeconds = options?.QueryTimeoutSeconds ?? _sessionOptions.QueryTimeoutSeconds;
 
         return new ExecuteStatementRequest
@@ -139,7 +140,6 @@ internal sealed class RestSessionBackend : ISessionBackend
             Format = Format,
             WaitTimeout = FormatWaitTimeout(timeoutSeconds),
             OnWaitTimeout = OnWaitTimeout,
-            RowLimit = maxRows > 0 ? maxRows : null,
         };
     }
 
