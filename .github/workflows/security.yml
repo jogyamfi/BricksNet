@@ -14,10 +14,6 @@ jobs:
     name: Vulnerable NuGet packages
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: bricksnet
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,7 +21,8 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          # Install exactly the SDK pinned by global.json at the repository root.
+          global-json-file: global.json
 
       - name: Restore
         run: dotnet restore BricksNet.sln
@@ -39,7 +36,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vuln-report
-          path: bricksnet/vuln-report.txt
+          path: vuln-report.txt
 
   owasp-dependency-check:
     name: OWASP Dependency-Check
@@ -53,7 +50,7 @@ jobs:
         uses: dependency-check/Dependency-Check_Action@main
         with:
           project: BricksNet
-          path: bricksnet/src
+          path: src
           format: HTML
           # Fail the job on CVSS score >= 7 (high/critical).
           args: >
