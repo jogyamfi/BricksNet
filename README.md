@@ -134,6 +134,14 @@ var options = new BricksNetClientOptions
 };
 ```
 
+### Metadata differences between backends
+
+`GetCatalogsAsync`, `GetSchemasAsync`, `GetTablesAsync` and `GetColumnsAsync` return JDBC-style
+columns (`TABLE_CAT`, `TABLE_SCHEM`, `TABLE_NAME`, `COLUMN_NAME`, …) on Thrift. The REST API has no
+metadata calls, so the REST backend runs `SHOW CATALOGS` / `SHOW SCHEMAS` / `SHOW TABLES` /
+`SHOW COLUMNS` and returns their Databricks SQL columns instead. On REST, `GetColumnsAsync` requires a
+table name and ignores the column pattern, and `%` in patterns is translated to the `*` wildcard.
+
 ---
 
 ## Logging & Telemetry

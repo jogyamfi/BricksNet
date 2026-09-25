@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -19,8 +20,11 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
 {
     private readonly SqlExecHttpClient _client;
     private readonly RestStatementPoller _poller;
+    private readonly TimeSpan? _queryTimeout;
+    private readonly long _startTimestamp = Stopwatch.GetTimestamp();
 
     private ExecuteStatementResponse? _terminalResponse;
+    private bool _timedOut;
     private IReadOnlyList<ColumnInfo>? _schema;
     private bool _firstChunkConsumed;
     private long? _nextChunkIndex;
@@ -28,13 +32,15 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
     public RestOperationBackend(
         SqlExecHttpClient client,
         RestStatementPoller poller,
-        ExecuteStatementResponse initialResponse)
+        ExecuteStatementResponse initialResponse,
+        TimeSpan? queryTimeout = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _poller = poller ?? throw new ArgumentNullException(nameof(poller));
         ArgumentNullException.ThrowIfNull(initialResponse);
 
         Id = initialResponse.StatementId;
+        _queryTimeout = queryTimeout;
         if (RestStatementPoller.IsTerminal(initialResponse.Status.State))
         {
             _terminalResponse = initialResponse;
@@ -50,19 +56,51 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
             return MapState(_terminalResponse.Status.State);
         }
 
+        if (_timedOut)
+        {
+            return QueryStatus.Failed;
+        }
+
         var response = await _client.GetStatementAsync(Id, cancellationToken).ConfigureAwait(false);
         if (RestStatementPoller.IsTerminal(response.Status.State))
         {
             _terminalResponse = response;
+            return MapState(response.Status.State);
+        }
+
+        // The Statement Execution API has no query-timeout parameter, so the timeout is enforced
+        // client-side: once exceeded, the statement is cancelled and reported as failed.
+        if (_queryTimeout is { } timeout && Stopwatch.GetElapsedTime(_startTimestamp) >= timeout)
+        {
+            _timedOut = true;
+            await CancelQuietlyAsync(cancellationToken).ConfigureAwait(false);
+            return QueryStatus.Failed;
         }
 
         return MapState(response.Status.State);
+    }
+
+    private async Task CancelQuietlyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _client.CancelAsync(Id, cancellationToken).ConfigureAwait(false);
+        }
+        catch (BricksNetException)
+        {
+            // Best effort: the statement may have finished or been closed concurrently.
+        }
     }
 
     public async Task<FetchResult> FetchResultsAsync(FetchOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         var cancellationToken = options.CancellationToken;
+
+        if (_timedOut)
+        {
+            throw CreateFailureException()!;
+        }
 
         var response = _terminalResponse
             ??= await _poller.PollUntilTerminalAsync(Id, cancellationToken).ConfigureAwait(false);
@@ -100,10 +138,24 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
         };
     }
 
-    public BricksNetException? CreateFailureException() =>
-        _terminalResponse is { Status.State: StatementState.Failed } response
+    public BricksNetException? CreateFailureException()
+    {
+        if (_timedOut)
+        {
+            // HYT00: the standard SQLSTATE for "timeout expired".
+            return new BricksNetException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The statement exceeded the query timeout of {_queryTimeout!.Value.TotalSeconds:0.###} seconds and was cancelled."),
+                sqlState: "HYT00",
+                errorCode: 0,
+                queryId: Id);
+        }
+
+        return _terminalResponse is { Status.State: StatementState.Failed } response
             ? BuildFailureException(response.Status.Error)
             : null;
+    }
 
     public Task CancelAsync(CancellationToken cancellationToken = default) =>
         _client.CancelAsync(Id, cancellationToken);

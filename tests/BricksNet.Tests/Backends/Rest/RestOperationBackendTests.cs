@@ -92,6 +92,27 @@ public sealed class RestOperationBackendTests
     }
 
     [Fact]
+    public async Task QueryTimeout_Exceeded_CancelsStatement_AndThrowsTimeout()
+    {
+        const string running = """{"statement_id":"st-5","status":{"state":"RUNNING"}}""";
+        var handler = new RestTestHandler((_, _) => (HttpStatusCode.OK, running));
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://fake.local") };
+        var client = new SqlExecHttpClient(
+            new BricksNetHttpClient(httpClient, NullLogger<BricksNetHttpClient>.Instance));
+        var initial = System.Text.Json.JsonSerializer.Deserialize(
+            running, SqlExecJsonContext.Default.ExecuteStatementResponse)!;
+        var backend = new RestOperationBackend(
+            client, new RestStatementPoller(client), initial, queryTimeout: TimeSpan.Zero);
+        var operation = new BricksNetOperation(backend, 10_000, "rest", NullLoggerFactory.Instance);
+
+        var ex = await Assert.ThrowsAsync<BricksNetException>(() => operation.WaitForCompletionAsync());
+
+        Assert.Equal("HYT00", ex.SqlState);
+        Assert.Contains(handler.Requests, r =>
+            r.Method == HttpMethod.Post && r.RequestUri!.AbsolutePath.EndsWith("/st-5/cancel", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task WaitForCompletionAsync_FailedStatement_SurfacesServerError()
     {
         const string initial = """

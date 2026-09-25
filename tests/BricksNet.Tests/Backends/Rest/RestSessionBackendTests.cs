@@ -124,7 +124,7 @@ public sealed class RestSessionBackendTests
 
         await backend.GetSchemasAsync("cat", "pat%");
 
-        Assert.Equal("SHOW SCHEMAS IN `cat` LIKE 'pat%'", LastStatement(handler));
+        Assert.Equal("SHOW SCHEMAS IN `cat` LIKE 'pat*'", LastStatement(handler));
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public sealed class RestSessionBackendTests
 
         await backend.GetTablesAsync("cat", "sch", "t%");
 
-        Assert.Equal("SHOW TABLES IN `cat`.`sch` LIKE 't%'", LastStatement(handler));
+        Assert.Equal("SHOW TABLES IN `cat`.`sch` LIKE 't*'", LastStatement(handler));
     }
 
     [Fact]

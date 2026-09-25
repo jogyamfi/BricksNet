@@ -1,4 +1,3 @@
-using System.Globalization;
 using BricksNet.Contracts;
 using BricksNet.Contracts.Options;
 using BricksNet.Backends.Thrift.Generated;
@@ -36,7 +35,9 @@ internal sealed class ThriftSessionBackend : ISessionBackend
     {
         ArgumentNullException.ThrowIfNull(sql);
 
-        var timeoutSeconds = options?.QueryTimeoutSeconds ?? _options.QueryTimeoutSeconds;
+        var timeoutSeconds = options is { QueryTimeoutSeconds: > 0 }
+            ? options.QueryTimeoutSeconds
+            : _options.QueryTimeoutSeconds;
 
         var request = new TExecuteStatementReq
         {
@@ -152,23 +153,17 @@ internal sealed class ThriftSessionBackend : ISessionBackend
         var mapped = new List<TSparkParameter>(parameters.Count);
         foreach (var parameter in parameters)
         {
+            // Send every value as a string with an explicit type (as the JDBC driver does), so
+            // BIGINT and DECIMAL values keep full precision instead of passing through double.
+            var (value, type) = ParameterFormatter.Format(parameter);
             mapped.Add(new TSparkParameter
             {
-                Name = parameter.Name,
-                Type = parameter.TypeHint,
-                Value = MapParameterValue(parameter.Value),
+                Name = parameter.Name.TrimStart(':'),
+                Type = type,
+                Value = value is null ? new TSparkParameterValue() : new TSparkParameterValue { StringValue = value },
             });
         }
 
         return mapped;
     }
-
-    private static TSparkParameterValue MapParameterValue(object? value) => value switch
-    {
-        null => new TSparkParameterValue(),
-        bool b => new TSparkParameterValue { BooleanValue = b },
-        sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal
-            => new TSparkParameterValue { DoubleValue = Convert.ToDouble(value, CultureInfo.InvariantCulture) },
-        _ => new TSparkParameterValue { StringValue = Convert.ToString(value, CultureInfo.InvariantCulture) },
-    };
 }

@@ -110,6 +110,19 @@ public class ArrowTypeConverterTests
         Assert.Equal(123.45m, Assert.IsType<decimal>(ArrowTypeConverter.ConvertValue(array, 0)));
     }
 
+    [Fact]
+    public void ConvertValue_Decimal128_BeyondSystemDecimal_ReturnsExactString()
+    {
+        // DECIMAL(38,0) can hold 38 digits; System.Decimal holds at most ~29.
+        const string digits = "12345678901234567890123456789012345678";
+        var type = new Decimal128Type(precision: 38, scale: 0);
+        var array = new Decimal128Array.Builder(type)
+            .Append(System.Data.SqlTypes.SqlDecimal.Parse(digits))
+            .Build();
+
+        Assert.Equal(digits, Assert.IsType<string>(ArrowTypeConverter.ConvertValue(array, 0)));
+    }
+
     // ---- Date types ----
 
     [Fact]

@@ -47,5 +47,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OAuth: `OAuthOptions.PersistenceProvider` is now used; the loopback redirect listener binds to
   `localhost` (binding `127.0.0.1` required admin rights on Windows).
 - Removed the unreachable inline-Arrow branch in the REST backend (INLINE supports only `JSON_ARRAY`).
+- REST: `QueryTimeoutSeconds` is now enforced (client-side deadline, then cancel; `SQLSTATE HYT00`).
+  It was previously only used as the initial `wait_timeout`.
+- Parameters: values are sent in invariant ISO formats with a SQL type inferred from the CLR type when
+  no `TypeHint` is given; Thrift no longer routes `BIGINT`/`DECIMAL` through `double`.
+- `DECIMAL(38, s)` values beyond `System.Decimal` range are returned as their exact string instead of
+  throwing `OverflowException` (Arrow and JSON results).
+- `ProxyOptions.Type = Socks5` now takes effect for `http://` proxy URIs; a SOCKS URI with
+  `ProxyType.Http` is rejected.
+- REST metadata: `%` in `LIKE` patterns is translated to Databricks' `*` wildcard; backend differences
+  are documented.
+- Samples: an unknown demo name reports an error instead of silently running `FluentPat`.
 
 [Unreleased]: https://github.com/your-org/bricksnet/compare/HEAD...HEAD

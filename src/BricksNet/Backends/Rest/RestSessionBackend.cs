@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using BricksNet.Backends.Rest.Dto;
 using BricksNet.Contracts;
@@ -21,9 +20,10 @@ internal sealed class RestSessionBackend : ISessionBackend
     private const string ExternalLinksDisposition = "EXTERNAL_LINKS";
     private const string ExternalLinksFormat = "ARROW_STREAM";
     private const string OnWaitTimeout = "CONTINUE";
+    // wait_timeout only bounds how long the POST blocks before returning a still-running statement
+    // (5–50 s, or 0). It is not a query timeout; that is enforced by RestOperationBackend.
     private const int DefaultWaitSeconds = 10;
     private const int MinWaitSeconds = 5;
-    private const int MaxWaitSeconds = 50;
 
     private readonly SqlExecHttpClient _client;
     private readonly RestStatementPoller _poller;
@@ -55,9 +55,14 @@ internal sealed class RestSessionBackend : ISessionBackend
     {
         ArgumentException.ThrowIfNullOrEmpty(sql);
 
+        var timeoutSeconds = EffectiveTimeoutSeconds(options);
         var request = BuildRequest(sql, options);
         var response = await _client.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
-        return new RestOperationBackend(_client, _poller, response);
+        return new RestOperationBackend(
+            _client,
+            _poller,
+            response,
+            timeoutSeconds > 0 ? TimeSpan.FromSeconds(timeoutSeconds) : null);
     }
 
     public Task<IOperationBackend> GetCatalogsAsync(CancellationToken cancellationToken = default) =>
@@ -134,7 +139,7 @@ internal sealed class RestSessionBackend : ISessionBackend
     {
         // MaxRows is a client-side page size, not a server-side row cap, so row_limit is never
         // sent: doing so would silently truncate every result set to MaxRows rows.
-        var timeoutSeconds = options?.QueryTimeoutSeconds ?? _sessionOptions.QueryTimeoutSeconds;
+        var timeoutSeconds = EffectiveTimeoutSeconds(options);
 
         return new ExecuteStatementRequest
         {
@@ -161,35 +166,37 @@ internal sealed class RestSessionBackend : ISessionBackend
         var mapped = new List<StatementParameterDto>(parameters.Count);
         foreach (var parameter in parameters)
         {
+            var (value, type) = ParameterFormatter.Format(parameter);
             mapped.Add(new StatementParameterDto
             {
                 Name = parameter.Name.TrimStart(':'),
-                Value = parameter.Value is null
-                    ? null
-                    : Convert.ToString(parameter.Value, CultureInfo.InvariantCulture),
-                Type = parameter.TypeHint,
+                Value = value,
+                Type = type,
             });
         }
 
         return mapped;
     }
 
-    private static string FormatWaitTimeout(int seconds)
-    {
-        if (seconds <= 0)
-        {
-            return $"{DefaultWaitSeconds}s";
-        }
+    private int EffectiveTimeoutSeconds(StatementOptions? options) =>
+        options is { QueryTimeoutSeconds: > 0 } ? options.QueryTimeoutSeconds : _sessionOptions.QueryTimeoutSeconds;
 
-        var clamped = Math.Clamp(seconds, MinWaitSeconds, MaxWaitSeconds);
-        return $"{clamped}s";
+    // Never block the initial POST longer than the query timeout allows (subject to the API minimum).
+    private static string FormatWaitTimeout(int timeoutSeconds)
+    {
+        var wait = timeoutSeconds > 0
+            ? Math.Clamp(timeoutSeconds, MinWaitSeconds, DefaultWaitSeconds)
+            : DefaultWaitSeconds;
+        return $"{wait}s";
     }
 
     private static void AppendLike(StringBuilder sql, string? pattern)
     {
         if (!string.IsNullOrEmpty(pattern))
         {
-            sql.Append(" LIKE ").Append(QuoteLiteral(pattern));
+            // SHOW ... LIKE uses '*' as its wildcard; translate the JDBC/SQL '%' wildcard so the same
+            // pattern works on both backends.
+            sql.Append(" LIKE ").Append(QuoteLiteral(pattern.Replace('%', '*')));
         }
     }
 

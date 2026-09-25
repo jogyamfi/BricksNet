@@ -149,6 +149,17 @@ public class JsonResultHandlerTests
     }
 
     [Fact]
+    public async Task TypeCoercion_Decimal_BeyondSystemDecimal_ReturnsExactString()
+    {
+        const string digits = "12345678901234567890123456789012345678";
+        var handler = new JsonResultHandler(Utf8($"[[\"{digits}\"]]"), new[] { Col(0, "d", "DECIMAL(38,0)") });
+
+        var rows = await handler.FetchNextChunkAsync();
+
+        Assert.Equal(digits, Assert.IsType<string>(rows[0]["d"]));
+    }
+
+    [Fact]
     public async Task UnknownTypeName_ReturnsRawString()
     {
         var json = Utf8("[[\"raw-value\"]]");

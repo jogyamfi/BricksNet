@@ -67,8 +67,8 @@ internal static class ArrowTypeConverter
             FloatArray a => a.GetValue(index),
             DoubleArray a => a.GetValue(index),
             BooleanArray a => a.GetValue(index),
-            Decimal128Array a => a.GetValue(index),
-            Decimal256Array a => a.GetValue(index),
+            Decimal128Array a => ToDecimalOrString(a, index),
+            Decimal256Array a => ToDecimalOrString(a, index),
             Date32Array a => ToDateOnly(a.GetDateTimeOffset(index)),
             Date64Array a => ToDateOnly(a.GetDateTimeOffset(index)),
             TimestampArray a => a.GetTimestamp(index),
@@ -81,6 +81,35 @@ internal static class ArrowTypeConverter
             _ => throw new NotSupportedException(
                 $"Arrow array type '{array.Data.DataType.TypeId}' is not supported."),
         };
+    }
+
+    /// <summary>
+    /// Returns the value as <see cref="decimal"/>, or as its exact string form when it exceeds
+    /// the range or precision of <see cref="decimal"/> (28–29 significant digits), which Databricks
+    /// <c>DECIMAL(38, s)</c> columns can.
+    /// </summary>
+    private static object? ToDecimalOrString(Decimal128Array array, int index)
+    {
+        try
+        {
+            return array.GetValue(index);
+        }
+        catch (OverflowException)
+        {
+            return array.GetString(index);
+        }
+    }
+
+    private static object? ToDecimalOrString(Decimal256Array array, int index)
+    {
+        try
+        {
+            return array.GetValue(index);
+        }
+        catch (OverflowException)
+        {
+            return array.GetString(index);
+        }
     }
 
     private static DateOnly? ToDateOnly(DateTimeOffset? value) =>

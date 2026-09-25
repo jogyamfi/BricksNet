@@ -4,20 +4,12 @@ using BricksNet.Contracts.Options;
 namespace BricksNet.Connection.Handlers;
 
 /// <summary>
-/// Builds an <see cref="IWebProxy"/> from <see cref="ProxyOptions"/> for use on the primary
-/// <see cref="SocketsHttpHandler"/>.
+/// Builds the <see cref="IWebProxy"/> assigned to the primary <see cref="SocketsHttpHandler"/>.
+/// <see cref="SocketsHttpHandler"/> supports SOCKS natively and selects the protocol from the
+/// proxy URI scheme, so <see cref="ProxyOptions.Type"/> is applied by normalising that scheme.
 /// </summary>
-/// <remarks>
-/// Proxy selection is a connection-level concern, so it is configured on the primary handler at
-/// registration time rather than per-request. .NET 8's <see cref="SocketsHttpHandler"/> understands
-/// both <c>http://</c> and <c>socks5://</c> proxy URIs natively, so no third-party package is needed.
-/// </remarks>
 internal static class ProxyConfigHandler
 {
-    /// <summary>
-    /// Creates a <see cref="WebProxy"/> for the supplied options, or <see langword="null"/> when no
-    /// proxy is configured.
-    /// </summary>
     public static IWebProxy? CreateProxy(ProxyOptions? options)
     {
         if (options is null)
@@ -25,13 +17,33 @@ internal static class ProxyConfigHandler
             return null;
         }
 
-        // SocketsHttpHandler routes both HTTP and SOCKS5 by inspecting the proxy URI scheme,
-        // so the same WebProxy construction path serves both ProxyType values.
-        var proxy = new WebProxy(options.Uri)
+        var proxy = new WebProxy(ResolveProxyUri(options))
         {
             Credentials = options.Credentials,
         };
 
         return proxy;
+    }
+
+    internal static Uri ResolveProxyUri(ProxyOptions options)
+    {
+        var uri = options.Uri;
+        var isSocksScheme = uri.Scheme.StartsWith("socks", StringComparison.OrdinalIgnoreCase);
+
+        switch (options.Type)
+        {
+            case ProxyType.Socks5 when !isSocksScheme:
+                // e.g. "http://proxy:1080" with Type = Socks5 → "socks5://proxy:1080".
+                return new UriBuilder(uri) { Scheme = "socks5" }.Uri;
+
+            case ProxyType.Http when isSocksScheme:
+                throw new ArgumentException(
+                    $"Proxy URI scheme '{uri.Scheme}' conflicts with ProxyType.Http. "
+                    + "Use an http:// URI or set ProxyType.Socks5.",
+                    nameof(options));
+
+            default:
+                return uri;
+        }
     }
 }

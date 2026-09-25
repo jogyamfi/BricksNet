@@ -100,7 +100,7 @@ public sealed class JsonResultHandler : IResultsProvider
             "BIGINT" or "LONG" => long.Parse(text, CultureInfo.InvariantCulture),
             "FLOAT" or "REAL" => float.Parse(text, CultureInfo.InvariantCulture),
             "DOUBLE" => double.Parse(text, CultureInfo.InvariantCulture),
-            "DECIMAL" or "NUMERIC" => decimal.Parse(text, CultureInfo.InvariantCulture),
+            "DECIMAL" or "NUMERIC" => ParseDecimalOrString(text),
             "DATE" => DateOnly.Parse(text, CultureInfo.InvariantCulture),
             "TIMESTAMP" or "TIMESTAMP_NTZ" => DateTimeOffset.Parse(
                 text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal),
@@ -108,6 +108,12 @@ public sealed class JsonResultHandler : IResultsProvider
             _ => text,
         };
     }
+
+    // DECIMAL(38, s) values can exceed System.Decimal; keep the exact text rather than failing.
+    private static object ParseDecimalOrString(string text) =>
+        decimal.TryParse(text, NumberStyles.Number | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : text;
 
     private static string NormalizeTypeName(string typeName)
     {
