@@ -24,6 +24,7 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
     private const string TokenKey = "Token";
     private const string AuthTypeKey = "AuthType";
     private const string UseThriftKey = "UseThrift";
+    private const string UseCloudFetchKey = "UseCloudFetch";
     private const string CatalogKey = "Catalog";
     private const string SchemaKey = "Schema";
     private const string QueryTimeoutKey = "QueryTimeoutSeconds";
@@ -111,6 +112,16 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
     {
         get => GetBoolean(UseThriftKey, false);
         set => this[UseThriftKey] = value;
+    }
+
+    /// <summary>
+    /// When <see langword="true"/>, the REST backend downloads results via CloudFetch
+    /// (<c>EXTERNAL_LINKS</c> + <c>ARROW_STREAM</c>). Defaults to <see langword="false"/>.
+    /// </summary>
+    public bool UseCloudFetch
+    {
+        get => GetBoolean(UseCloudFetchKey, false);
+        set => this[UseCloudFetchKey] = value;
     }
 
     /// <summary>Default catalog for unqualified object references.</summary>
@@ -246,6 +257,7 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
             HttpPath = httpPath,
             AuthType = AuthType,
             UseThrift = UseThrift,
+            UseCloudFetch = UseCloudFetch,
             ProxyOptions = BuildProxyOptions(),
             SslOptions = new SslOptions { AllowSelfSignedCerts = AllowSelfSignedCerts },
             UserAgent = string.IsNullOrEmpty(UserAgent) ? null : UserAgent,

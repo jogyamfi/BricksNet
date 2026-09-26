@@ -18,9 +18,16 @@ internal static class ArrowTypeConverter
     {
         ArgumentNullException.ThrowIfNull(batch);
 
-        var fields = batch.Schema.FieldsList;
         var columnCount = batch.ColumnCount;
         var rowCount = batch.Length;
+        var fields = batch.Schema.FieldsList;
+        var names = new string[columnCount];
+        for (var col = 0; col < columnCount; col++)
+        {
+            names[col] = fields[col].Name;
+        }
+
+        names = ColumnNames.MakeUnique(names);
 
         var rows = new List<IReadOnlyDictionary<string, object?>>(rowCount);
         for (var row = 0; row < rowCount; row++)
@@ -28,7 +35,7 @@ internal static class ArrowTypeConverter
             var record = new Dictionary<string, object?>(columnCount, StringComparer.Ordinal);
             for (var col = 0; col < columnCount; col++)
             {
-                record[fields[col].Name] = ConvertValue(batch.Column(col), row);
+                record[names[col]] = ConvertValue(batch.Column(col), row);
             }
 
             rows.Add(record);
@@ -60,8 +67,8 @@ internal static class ArrowTypeConverter
             FloatArray a => a.GetValue(index),
             DoubleArray a => a.GetValue(index),
             BooleanArray a => a.GetValue(index),
-            Decimal128Array a => a.GetValue(index),
-            Decimal256Array a => a.GetValue(index),
+            Decimal128Array a => ToDecimalOrString(a, index),
+            Decimal256Array a => ToDecimalOrString(a, index),
             Date32Array a => ToDateOnly(a.GetDateTimeOffset(index)),
             Date64Array a => ToDateOnly(a.GetDateTimeOffset(index)),
             TimestampArray a => a.GetTimestamp(index),
@@ -74,6 +81,35 @@ internal static class ArrowTypeConverter
             _ => throw new NotSupportedException(
                 $"Arrow array type '{array.Data.DataType.TypeId}' is not supported."),
         };
+    }
+
+    /// <summary>
+    /// Returns the value as <see cref="decimal"/>, or as its exact string form when it exceeds
+    /// the range or precision of <see cref="decimal"/> (28–29 significant digits), which Databricks
+    /// <c>DECIMAL(38, s)</c> columns can.
+    /// </summary>
+    private static object? ToDecimalOrString(Decimal128Array array, int index)
+    {
+        try
+        {
+            return array.GetValue(index);
+        }
+        catch (OverflowException)
+        {
+            return array.GetString(index);
+        }
+    }
+
+    private static object? ToDecimalOrString(Decimal256Array array, int index)
+    {
+        try
+        {
+            return array.GetValue(index);
+        }
+        catch (OverflowException)
+        {
+            return array.GetString(index);
+        }
     }
 
     private static DateOnly? ToDateOnly(DateTimeOffset? value) =>

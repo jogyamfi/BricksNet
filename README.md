@@ -3,7 +3,7 @@
 [![NuGet](https://img.shields.io/nuget/v/BricksNet.svg)](https://www.nuget.org/packages/BricksNet)
 [![Build](https://github.com/your-org/bricksnet/actions/workflows/build.yml/badge.svg)](https://github.com/your-org/bricksnet/actions/workflows/build.yml)
 -->
-**BricksNet** is a .NET 8 Databricks SQL client library providing two complementary surfaces:
+**BricksNet** is a .NET 10 Databricks SQL client library providing two complementary surfaces:
 
 - **Fluent async API** — `BricksNetClient → BricksNetSession → BricksNetOperation`
 - **ADO.NET provider** — `BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`; compatible with Dapper and EF Core (read)
@@ -133,6 +133,14 @@ var options = new BricksNetClientOptions
     UseThrift = true,
 };
 ```
+
+### Metadata differences between backends
+
+`GetCatalogsAsync`, `GetSchemasAsync`, `GetTablesAsync` and `GetColumnsAsync` return JDBC-style
+columns (`TABLE_CAT`, `TABLE_SCHEM`, `TABLE_NAME`, `COLUMN_NAME`, …) on Thrift. The REST API has no
+metadata calls, so the REST backend runs `SHOW CATALOGS` / `SHOW SCHEMAS` / `SHOW TABLES` /
+`SHOW COLUMNS` and returns their Databricks SQL columns instead. On REST, `GetColumnsAsync` requires a
+table name and ignores the column pattern, and `%` in patterns is translated to the `*` wildcard.
 
 ---
 

@@ -65,14 +65,15 @@ public sealed class SqlExecHttpClientTests
     }
 
     [Fact]
-    public async Task CancelAsync_IssuesDelete()
+    public async Task CancelAsync_PostsToCancelEndpoint()
     {
         var handler = new RestTestHandler((_, _) => (HttpStatusCode.OK, string.Empty));
         var client = CreateClient(handler);
 
         await client.CancelAsync("id-1");
 
-        Assert.Equal(HttpMethod.Delete, handler.Requests[0].Method);
+        Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
+        Assert.Equal("/api/2.0/sql/statements/id-1/cancel", handler.Requests[0].RequestUri!.AbsolutePath);
     }
 
     [Fact]

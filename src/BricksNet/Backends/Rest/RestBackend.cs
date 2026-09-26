@@ -17,6 +17,7 @@ internal sealed class RestBackend : IBackend
     private SqlExecHttpClient? _client;
     private RestStatementPoller? _poller;
     private string? _warehouseId;
+    private bool _useCloudFetch;
 
     public RestBackend(BricksNetHttpClient httpClient)
     {
@@ -29,6 +30,7 @@ internal sealed class RestBackend : IBackend
         cancellationToken.ThrowIfCancellationRequested();
 
         _warehouseId = ExtractWarehouseId(options.HttpPath);
+        _useCloudFetch = options.UseCloudFetch;
         _client = new SqlExecHttpClient(_httpClient);
         _poller = new RestStatementPoller(_client);
 
@@ -47,7 +49,7 @@ internal sealed class RestBackend : IBackend
             throw new InvalidOperationException("ConnectAsync must be called before OpenSessionAsync.");
         }
 
-        ISessionBackend session = new RestSessionBackend(_client, _poller, _warehouseId, options);
+        ISessionBackend session = new RestSessionBackend(_client, _poller, _warehouseId, options, _useCloudFetch);
         return Task.FromResult(session);
     }
 

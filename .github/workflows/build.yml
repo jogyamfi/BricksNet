@@ -10,10 +10,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: bricksnet
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,7 +20,8 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          # Install exactly the SDK pinned by global.json at the repository root.
+          global-json-file: global.json
 
       - name: Restore
         run: dotnet restore BricksNet.sln
@@ -43,7 +40,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          directory: bricksnet/coverage-out
+          directory: coverage-out
           flags: unittests
           fail_ci_if_error: false
 
@@ -56,4 +53,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nupkgs
-          path: bricksnet/nupkgs/
+          path: nupkgs/

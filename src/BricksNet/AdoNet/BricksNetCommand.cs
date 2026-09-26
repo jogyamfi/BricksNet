@@ -119,7 +119,17 @@ public sealed class BricksNetCommand : DbCommand
             .ConfigureAwait(false);
         _activeOperation = operation;
 
-        await operation.CloseAsync().ConfigureAwait(false);
+        try
+        {
+            // Wait for the statement to finish before closing it: closing a still-running Thrift
+            // operation aborts it, and a failed statement must surface as an exception.
+            await operation.WaitForCompletionAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await operation.CloseAsync().ConfigureAwait(false);
+        }
+
         return -1;
     }
 
@@ -181,7 +191,10 @@ public sealed class BricksNetCommand : DbCommand
                     .FetchChunkAsync<IReadOnlyDictionary<string, object?>>(chunkSize, cancellationToken)
                     .ConfigureAwait(false);
 
-        return new BricksNetDataReader(operation, firstChunk, chunkSize, behavior, _connection);
+        // Read after the first chunk so the page that carries the schema is fetched only once.
+        var schema = await operation.GetSchemaAsync(cancellationToken).ConfigureAwait(false);
+
+        return new BricksNetDataReader(operation, schema, firstChunk, chunkSize, behavior, _connection);
     }
 
     private int ResolveChunkSize(CommandBehavior behavior)

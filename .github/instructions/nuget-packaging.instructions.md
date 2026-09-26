@@ -14,7 +14,7 @@ These rules apply to project files and shared MSBuild configuration.
   <!-- Directory.Build.props -->
   <Project>
     <PropertyGroup>
-      <TargetFramework>net8.0</TargetFramework>
+      <TargetFramework>net10.0</TargetFramework>
       <Nullable>enable</Nullable>
       <ImplicitUsings>enable</ImplicitUsings>
       <LangVersion>latest</LangVersion>

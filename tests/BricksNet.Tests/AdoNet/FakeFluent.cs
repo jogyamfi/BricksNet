@@ -40,11 +40,20 @@ internal static class FakeFluent
     {
         public bool Closed { get; private set; }
 
+        public Exception? WaitFailure { get; set; }
+
+        public IReadOnlyList<ColumnInfo> Schema { get; set; } = [];
+
+        public FakeOperation? LastOperation { get; private set; }
+
         public Task<IBricksNetOperation> ExecuteStatementAsync(
             string sql,
             StatementOptions? options = null,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IBricksNetOperation>(new FakeOperation(rows));
+            CancellationToken cancellationToken = default)
+        {
+            LastOperation = new FakeOperation(rows) { WaitFailure = WaitFailure, Schema = Schema };
+            return Task.FromResult<IBricksNetOperation>(LastOperation);
+        }
 
         public Task<IBricksNetOperation> GetCatalogsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IBricksNetOperation>(new FakeOperation(rows));
@@ -87,6 +96,10 @@ internal static class FakeFluent
 
         public bool Cancelled { get; private set; }
 
+        public bool Waited { get; private set; }
+
+        public Exception? WaitFailure { get; init; }
+
         public Task<IReadOnlyList<T>> FetchAllAsync<T>(CancellationToken cancellationToken = default)
         {
             var all = rows.Cast<T>().ToList();
@@ -107,6 +120,17 @@ internal static class FakeFluent
             _cursor += take;
             return Task.FromResult<IReadOnlyList<T>>(chunk);
         }
+
+        public Task WaitForCompletionAsync(CancellationToken cancellationToken = default)
+        {
+            Waited = true;
+            return WaitFailure is null ? Task.CompletedTask : Task.FromException(WaitFailure);
+        }
+
+        public IReadOnlyList<ColumnInfo> Schema { get; init; } = [];
+
+        public Task<IReadOnlyList<ColumnInfo>> GetSchemaAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Schema);
 
         public Task<QueryStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(QueryStatus.Succeeded);

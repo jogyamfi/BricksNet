@@ -4,7 +4,7 @@ applyTo: "**/src/BricksNet/**/*.cs"
 
 # .NET Library Conventions (BricksNet)
 
-These rules apply to all production code in `src/BricksNet/`. They encode idiomatic, allocation-conscious, async-correct .NET 8 library design.
+These rules apply to all production code in `src/BricksNet/`. They encode idiomatic, allocation-conscious, async-correct .NET 10 library design.
 
 ## Async & Cancellation
 

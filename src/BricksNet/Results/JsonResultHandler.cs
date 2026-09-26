@@ -14,6 +14,7 @@ public sealed class JsonResultHandler : IResultsProvider
 {
     private readonly ReadOnlyMemory<byte> _payload;
     private readonly IReadOnlyList<ColumnInfo> _schema;
+    private readonly string[] _names;
     private bool _hasMoreRows;
 
     /// <summary>Creates a handler over a buffered JSON payload and its column schema.</summary>
@@ -22,6 +23,7 @@ public sealed class JsonResultHandler : IResultsProvider
         ArgumentNullException.ThrowIfNull(schema);
         _payload = payload;
         _schema = schema;
+        _names = ColumnNames.MakeUnique(schema.Select(column => column.Name).ToArray());
         _hasMoreRows = !payload.IsEmpty;
     }
 
@@ -65,8 +67,8 @@ public sealed class JsonResultHandler : IResultsProvider
                     break;
                 }
 
-                var column = _schema[ordinal++];
-                record[column.Name] = Coerce(cell, column.TypeName);
+                record[_names[ordinal]] = Coerce(cell, _schema[ordinal].TypeName);
+                ordinal++;
             }
 
             rows.Add(record);
@@ -98,7 +100,7 @@ public sealed class JsonResultHandler : IResultsProvider
             "BIGINT" or "LONG" => long.Parse(text, CultureInfo.InvariantCulture),
             "FLOAT" or "REAL" => float.Parse(text, CultureInfo.InvariantCulture),
             "DOUBLE" => double.Parse(text, CultureInfo.InvariantCulture),
-            "DECIMAL" or "NUMERIC" => decimal.Parse(text, CultureInfo.InvariantCulture),
+            "DECIMAL" or "NUMERIC" => ParseDecimalOrString(text),
             "DATE" => DateOnly.Parse(text, CultureInfo.InvariantCulture),
             "TIMESTAMP" or "TIMESTAMP_NTZ" => DateTimeOffset.Parse(
                 text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal),
@@ -106,6 +108,12 @@ public sealed class JsonResultHandler : IResultsProvider
             _ => text,
         };
     }
+
+    // DECIMAL(38, s) values can exceed System.Decimal; keep the exact text rather than failing.
+    private static object ParseDecimalOrString(string text) =>
+        decimal.TryParse(text, NumberStyles.Number | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : text;
 
     private static string NormalizeTypeName(string typeName)
     {

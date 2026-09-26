@@ -18,6 +18,15 @@ public sealed record BricksNetClientOptions
     /// <summary>When <see langword="true"/>, the Thrift backend is used; otherwise the REST backend. Defaults to <see langword="false"/> (REST).</summary>
     public bool UseThrift { get; init; } = false;
 
+    /// <summary>
+    /// When <see langword="true"/>, the REST backend requests results as <c>EXTERNAL_LINKS</c> in
+    /// <c>ARROW_STREAM</c> format (CloudFetch), downloading chunks in parallel from pre-signed URLs.
+    /// Required for results larger than 25 MiB, which the default <c>INLINE</c> + <c>JSON_ARRAY</c>
+    /// mode rejects. Ignored by the Thrift backend, which always negotiates CloudFetch with the server.
+    /// Defaults to <see langword="false"/>.
+    /// </summary>
+    public bool UseCloudFetch { get; init; }
+
     /// <summary>HTTP retry policy.</summary>
     public RetryOptions RetryOptions { get; init; } = new();
 

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OWASP Dependency-Check suppressions. Every entry must name the package, the reason it is a false
+  positive, and should be revisited when the package is upgraded.
+  Format: https://dependency-check.github.io/DependencyCheck/general/suppression.html
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+  <suppress>
+    <notes><![CDATA[
+      False positive. Microsoft.SourceLink.GitHub is matched to the generic cpe:/a:github:github CPE
+      (GitHub the hosted service), which carries CVE-2012-2055 — a 2012 GitHub.com mass-assignment
+      issue, unrelated to this build-time-only MSBuild package (PrivateAssets=all; it does not ship in
+      the BricksNet NuGet package).
+    ]]></notes>
+    <packageUrl regex="true">^pkg:nuget/Microsoft\.SourceLink\.GitHub@.*$</packageUrl>
+    <cpe>cpe:/a:github:github</cpe>
+  </suppress>
+  <suppress>
+    <notes><![CDATA[
+      False positive. CVE-2026-25087 is a use-after-free in Apache Arrow C++ (15.0.0–23.0.0, fixed in
+      C++ 23.0.1), reachable only when reading an Arrow IPC *file* with pre-buffering enabled via the
+      C++-only RecordBatchFileReader::PreBufferMetadata API. The Apache.Arrow NuGet package is the
+      independent, fully managed C# implementation and contains no Arrow C++ code; it is matched only
+      through the shared cpe:/a:apache:arrow CPE. BricksNet also reads IPC *streams*
+      (ArrowStreamReader), never IPC files. Suppressed by CVE id only, so other Arrow CVEs still fail
+      the scan.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:nuget/Apache\.Arrow@.*$</packageUrl>
+    <cve>CVE-2026-25087</cve>
+  </suppress>
+</suppressions>

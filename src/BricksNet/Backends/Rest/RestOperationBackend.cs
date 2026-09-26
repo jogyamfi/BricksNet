@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BricksNet.AdoNet;
 using BricksNet.Backends.Rest.Dto;
 using BricksNet.Contracts;
@@ -14,23 +16,31 @@ namespace BricksNet.Backends.Rest;
 /// Waits for the statement to reach a terminal state (reusing the embedded direct result when
 /// available), then materialises inline Arrow/JSON payloads or CloudFetch external links.
 /// </summary>
-internal sealed class RestOperationBackend : IOperationBackend
+internal sealed partial class RestOperationBackend : IOperationBackend, IOperationFailureSource
 {
     private readonly SqlExecHttpClient _client;
     private readonly RestStatementPoller _poller;
+    private readonly TimeSpan? _queryTimeout;
+    private readonly long _startTimestamp = Stopwatch.GetTimestamp();
 
     private ExecuteStatementResponse? _terminalResponse;
+    private bool _timedOut;
+    private IReadOnlyList<ColumnInfo>? _schema;
+    private bool _firstChunkConsumed;
+    private long? _nextChunkIndex;
 
     public RestOperationBackend(
         SqlExecHttpClient client,
         RestStatementPoller poller,
-        ExecuteStatementResponse initialResponse)
+        ExecuteStatementResponse initialResponse,
+        TimeSpan? queryTimeout = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _poller = poller ?? throw new ArgumentNullException(nameof(poller));
         ArgumentNullException.ThrowIfNull(initialResponse);
 
         Id = initialResponse.StatementId;
+        _queryTimeout = queryTimeout;
         if (RestStatementPoller.IsTerminal(initialResponse.Status.State))
         {
             _terminalResponse = initialResponse;
@@ -46,13 +56,40 @@ internal sealed class RestOperationBackend : IOperationBackend
             return MapState(_terminalResponse.Status.State);
         }
 
+        if (_timedOut)
+        {
+            return QueryStatus.Failed;
+        }
+
         var response = await _client.GetStatementAsync(Id, cancellationToken).ConfigureAwait(false);
         if (RestStatementPoller.IsTerminal(response.Status.State))
         {
             _terminalResponse = response;
+            return MapState(response.Status.State);
+        }
+
+        // The Statement Execution API has no query-timeout parameter, so the timeout is enforced
+        // client-side: once exceeded, the statement is cancelled and reported as failed.
+        if (_queryTimeout is { } timeout && Stopwatch.GetElapsedTime(_startTimestamp) >= timeout)
+        {
+            _timedOut = true;
+            await CancelQuietlyAsync(cancellationToken).ConfigureAwait(false);
+            return QueryStatus.Failed;
         }
 
         return MapState(response.Status.State);
+    }
+
+    private async Task CancelQuietlyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _client.CancelAsync(Id, cancellationToken).ConfigureAwait(false);
+        }
+        catch (BricksNetException)
+        {
+            // Best effort: the statement may have finished or been closed concurrently.
+        }
     }
 
     public async Task<FetchResult> FetchResultsAsync(FetchOptions options)
@@ -60,13 +97,64 @@ internal sealed class RestOperationBackend : IOperationBackend
         ArgumentNullException.ThrowIfNull(options);
         var cancellationToken = options.CancellationToken;
 
+        if (_timedOut)
+        {
+            throw CreateFailureException()!;
+        }
+
         var response = _terminalResponse
             ??= await _poller.PollUntilTerminalAsync(Id, cancellationToken).ConfigureAwait(false);
 
         EnsureNotFailed(response);
 
-        var schema = BuildSchema(response.Manifest);
-        return BuildFetchResult(response.Result, response.Manifest, schema);
+        var schema = _schema ??= BuildSchema(response.Manifest);
+
+        ResultData? chunk;
+        if (!_firstChunkConsumed)
+        {
+            // The terminal statement response embeds chunk 0; fetch it explicitly only when the
+            // manifest reports chunks but the response carried none.
+            _firstChunkConsumed = true;
+            chunk = response.Result;
+            if (chunk is null && response.Manifest is { TotalChunkCount: > 0 })
+            {
+                chunk = await _client.GetChunkAsync(Id, 0, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        else if (_nextChunkIndex is { } next)
+        {
+            chunk = await _client.GetChunkAsync(Id, next, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            return new FetchResult(ResultFormat.Arrow, ReadOnlyMemory<byte>.Empty, ExternalLinks: null, schema);
+        }
+
+        _nextChunkIndex = chunk?.NextChunkIndex ?? chunk?.ExternalLinks?.LastOrDefault()?.NextChunkIndex;
+
+        return BuildFetchResult(chunk, schema) with
+        {
+            HasMoreRows = _nextChunkIndex is not null,
+        };
+    }
+
+    public BricksNetException? CreateFailureException()
+    {
+        if (_timedOut)
+        {
+            // HYT00: the standard SQLSTATE for "timeout expired".
+            return new BricksNetException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The statement exceeded the query timeout of {_queryTimeout!.Value.TotalSeconds:0.###} seconds and was cancelled."),
+                sqlState: "HYT00",
+                errorCode: 0,
+                queryId: Id);
+        }
+
+        return _terminalResponse is { Status.State: StatementState.Failed } response
+            ? BuildFailureException(response.Status.Error)
+            : null;
     }
 
     public Task CancelAsync(CancellationToken cancellationToken = default) =>
@@ -86,15 +174,33 @@ internal sealed class RestOperationBackend : IOperationBackend
             return;
         }
 
-        var error = response.Status.Error;
-        var message = error?.Message ?? "The statement failed without an error message.";
-        throw new BricksNetException(message, sqlState: null, errorCode: 0, queryId: Id);
+        throw BuildFailureException(response.Status.Error);
     }
 
-    private static FetchResult BuildFetchResult(
-        ResultData? result,
-        ResultManifest? manifest,
-        IReadOnlyList<ColumnInfo> schema)
+    private BricksNetException BuildFailureException(ServiceError? error)
+    {
+        var message = string.IsNullOrWhiteSpace(error?.Message)
+            ? "The statement failed without an error message."
+            : error.Message;
+
+        // The REST error code is symbolic (e.g. "BAD_REQUEST"), so it is carried in the message;
+        // the SQLSTATE, when present, is embedded in the message text by the server.
+        if (!string.IsNullOrEmpty(error?.ErrorCode))
+        {
+            message = $"[{error.ErrorCode}] {message}";
+        }
+
+        var sqlState = SqlStateRegex().Match(message) is { Success: true } match
+            ? match.Groups[1].Value
+            : null;
+
+        return new BricksNetException(message, sqlState, errorCode: 0, queryId: Id);
+    }
+
+    [GeneratedRegex(@"SQLSTATE:\s*([0-9A-Z]{5})", RegexOptions.CultureInvariant)]
+    private static partial Regex SqlStateRegex();
+
+    private static FetchResult BuildFetchResult(ResultData? result, IReadOnlyList<ColumnInfo> schema)
     {
         if (result is null)
         {
@@ -106,13 +212,10 @@ internal sealed class RestOperationBackend : IOperationBackend
             return new FetchResult(ResultFormat.CloudFetch, ReadOnlyMemory<byte>.Empty, MapLinks(links), schema);
         }
 
-        return BuildInlineResult(result, manifest, schema);
+        return BuildInlineResult(result, schema);
     }
 
-    private static FetchResult BuildInlineResult(
-        ResultData result,
-        ResultManifest? manifest,
-        IReadOnlyList<ColumnInfo> schema)
+    private static FetchResult BuildInlineResult(ResultData result, IReadOnlyList<ColumnInfo> schema)
     {
         if (result.Data is not { } data ||
             data.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
@@ -120,20 +223,10 @@ internal sealed class RestOperationBackend : IOperationBackend
             return new FetchResult(ResultFormat.Arrow, ReadOnlyMemory<byte>.Empty, ExternalLinks: null, schema);
         }
 
-        // ARROW_STREAM inline payloads arrive base64-encoded as a JSON string.
-        if (data.ValueKind == JsonValueKind.String)
-        {
-            var base64 = data.GetString() ?? string.Empty;
-            ReadOnlyMemory<byte> arrow = base64.Length == 0
-                ? ReadOnlyMemory<byte>.Empty
-                : Convert.FromBase64String(base64);
-            return new FetchResult(ResultFormat.Arrow, arrow, ExternalLinks: null, schema);
-        }
-
-        // JSON_ARRAY inline payloads arrive as a JSON array of row arrays.
-        var format = MapInlineFormat(manifest?.Format);
+        // INLINE results are always JSON_ARRAY (ARROW_STREAM requires EXTERNAL_LINKS): a JSON array
+        // of row arrays.
         var payload = Encoding.UTF8.GetBytes(data.GetRawText());
-        return new FetchResult(format, payload, ExternalLinks: null, schema);
+        return new FetchResult(ResultFormat.JsonColumnar, payload, ExternalLinks: null, schema);
     }
 
     private static IReadOnlyList<ColumnInfo> BuildSchema(ResultManifest? manifest)
@@ -188,10 +281,6 @@ internal sealed class RestOperationBackend : IOperationBackend
             ? parsed
             : DateTimeOffset.MaxValue;
 
-    private static ResultFormat MapInlineFormat(string? manifestFormat) =>
-        string.Equals(manifestFormat, "ARROW_STREAM", StringComparison.OrdinalIgnoreCase)
-            ? ResultFormat.Arrow
-            : ResultFormat.JsonColumnar;
 
     private static QueryStatus MapState(StatementState state) => state switch
     {

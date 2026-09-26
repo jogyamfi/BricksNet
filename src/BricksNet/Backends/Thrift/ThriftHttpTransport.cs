@@ -62,7 +62,7 @@ internal sealed class ThriftHttpTransport : TEndpointTransport
 
     public override async Task FlushAsync(CancellationToken cancellationToken)
     {
-        ResetConsumedMessageSize();
+        ResetMessageSizeAndConsumedBytes();
 
         var payload = _writeBuffer.ToArray();
         _writeBuffer.SetLength(0);
@@ -88,7 +88,7 @@ internal sealed class ThriftHttpTransport : TEndpointTransport
 
         _readBuffer.Dispose();
         _readBuffer = new MemoryStream(responseBytes, writable: false);
-        ResetConsumedMessageSize(responseBytes.LongLength);
+        ResetMessageSizeAndConsumedBytes(responseBytes.LongLength);
     }
 
     protected override void Dispose(bool disposing)

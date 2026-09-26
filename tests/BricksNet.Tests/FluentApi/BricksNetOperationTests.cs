@@ -210,6 +210,86 @@ public sealed class BricksNetOperationTests
             operation.FetchAllAsync<IReadOnlyDictionary<string, object?>>());
     }
 
+    // ---- Multi-page results ----
+
+    private static Mock<IOperationBackend> PagedMock(params FetchResult[] pages)
+    {
+        var mock = SucceededMock();
+        var index = 0;
+        mock.Setup(m => m.FetchResultsAsync(It.IsAny<FetchOptions>()))
+            .ReturnsAsync(() => pages[index++]);
+        return mock;
+    }
+
+    [Fact]
+    public async Task FetchAllAsync_FollowsBackendPages_UntilHasMoreRowsIsFalse()
+    {
+        var mock = PagedMock(
+            JsonFetchResult("[[\"1\"],[\"2\"]]", ("id", "INT")) with { HasMoreRows = true },
+            JsonFetchResult("[[\"3\"]]", ("id", "INT")) with { HasMoreRows = true },
+            JsonFetchResult("[[\"4\"]]", ("id", "INT")));
+        var operation = CreateOperation(mock.Object);
+
+        var rows = await operation.FetchAllAsync<IReadOnlyDictionary<string, object?>>();
+
+        Assert.Equal(new object?[] { 1, 2, 3, 4 }, rows.Select(r => r["id"]));
+        mock.Verify(m => m.FetchResultsAsync(It.IsAny<FetchOptions>()), Times.Exactly(3));
+    }
+
+    [Fact]
+    public async Task FetchAllAsync_SkipsEmptyIntermediatePage()
+    {
+        var mock = PagedMock(
+            JsonFetchResult("[[\"1\"]]", ("id", "INT")) with { HasMoreRows = true },
+            EmptyArrowResult() with { HasMoreRows = true },
+            JsonFetchResult("[[\"2\"]]", ("id", "INT")));
+        var operation = CreateOperation(mock.Object);
+
+        var rows = await operation.FetchAllAsync<IReadOnlyDictionary<string, object?>>();
+
+        Assert.Equal(2, rows.Count);
+    }
+
+    [Fact]
+    public async Task FetchChunkAsync_SpansBackendPages()
+    {
+        var mock = PagedMock(
+            JsonFetchResult("[[\"1\"],[\"2\"]]", ("id", "INT")) with { HasMoreRows = true },
+            JsonFetchResult("[[\"3\"],[\"4\"]]", ("id", "INT")));
+        var operation = CreateOperation(mock.Object);
+
+        var first = await operation.FetchChunkAsync<IReadOnlyDictionary<string, object?>>(3);
+        var second = await operation.FetchChunkAsync<IReadOnlyDictionary<string, object?>>(3);
+        var third = await operation.FetchChunkAsync<IReadOnlyDictionary<string, object?>>(3);
+
+        Assert.Equal(new object?[] { 1, 2, 3 }, first.Select(r => r["id"]));
+        Assert.Equal(new object?[] { 4 }, second.Select(r => r["id"]));
+        Assert.Empty(third);
+    }
+
+    [Fact]
+    public async Task WaitForCompletionAsync_DoesNotFetchResults()
+    {
+        var mock = SucceededMock();
+        var operation = CreateOperation(mock.Object);
+
+        await operation.WaitForCompletionAsync();
+
+        mock.Verify(m => m.FetchResultsAsync(It.IsAny<FetchOptions>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task WaitForCompletionAsync_FailedStatus_Throws()
+    {
+        var mock = new Mock<IOperationBackend>();
+        mock.Setup(m => m.Id).Returns("s8");
+        mock.Setup(m => m.GetStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(QueryStatus.Failed);
+        var operation = CreateOperation(mock.Object);
+
+        await Assert.ThrowsAsync<BricksNetException>(() => operation.WaitForCompletionAsync());
+    }
+
     [Fact]
     public async Task FetchAllAsync_CancellationToken_Throws()
     {

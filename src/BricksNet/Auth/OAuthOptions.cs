@@ -19,6 +19,14 @@ public sealed record OAuthOptions
     public IReadOnlyList<string> Scopes { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Host name used for the loopback redirect listener and the <c>redirect_uri</c>. Defaults to
+    /// <c>localhost</c>, which matches the redirect URIs registered for Databricks' built-in OAuth
+    /// applications and can be bound by <see cref="System.Net.HttpListener"/> on Windows without
+    /// administrator rights or a URL ACL reservation. Must be <c>localhost</c> or a loopback address.
+    /// </summary>
+    public string RedirectHost { get; init; } = "localhost";
+
+    /// <summary>
     /// First loopback port tried for the redirect listener. Defaults to <c>8020</c>. If the port is
     /// busy, ports up to <see cref="RedirectPortScanLimit"/> are tried in turn.
     /// </summary>

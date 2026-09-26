@@ -12,7 +12,7 @@
     <Version>0.1.0-alpha</Version>
     <Authors>James Gyamfi</Authors>
     <Company>JamesGyamfi</Company>
-    <Description>BricksNet — Databricks SQL client library for .NET 8</Description>
+    <Description>BricksNet — Databricks SQL client library for .NET 10</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/your-org/bricksnet</PackageProjectUrl>

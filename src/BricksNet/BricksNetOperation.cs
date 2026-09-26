@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using BricksNet.AdoNet;
+using BricksNet.Backends;
 using BricksNet.Contracts;
 using BricksNet.Contracts.Options;
 using BricksNet.Results;
@@ -28,6 +30,8 @@ public sealed class BricksNetOperation : IBricksNetOperation
     private readonly Queue<IReadOnlyDictionary<string, object?>> _buffer = new();
 
     private IResultsProvider? _provider;
+    private IReadOnlyList<ColumnInfo>? _schema;
+    private bool _backendHasMoreRows = true;
     private bool _completed;
     private bool _closed;
 
@@ -64,7 +68,6 @@ public sealed class BricksNetOperation : IBricksNetOperation
             throw new ArgumentOutOfRangeException(nameof(maxRows), maxRows, "maxRows must be positive.");
         }
 
-        await EnsureResultsAsync(cancellationToken).ConfigureAwait(false);
         await FillBufferAsync(maxRows, cancellationToken).ConfigureAwait(false);
 
         if (_buffer.Count == 0)
@@ -80,6 +83,29 @@ public sealed class BricksNetOperation : IBricksNetOperation
         }
 
         return MapRows<T>(taken);
+    }
+
+    /// <inheritdoc />
+    public Task WaitForCompletionAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfClosed();
+        return EnsureCompletedAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ColumnInfo>> GetSchemaAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfClosed();
+        await EnsureCompletedAsync(cancellationToken).ConfigureAwait(false);
+
+        // The schema travels with each result page; fetch the first page if none has been read yet.
+        // Its rows stay in the provider for subsequent fetches.
+        if (_schema is null && _backendHasMoreRows)
+        {
+            await FetchNextPageAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return _schema ?? Array.Empty<ColumnInfo>();
     }
 
     /// <inheritdoc />
@@ -110,6 +136,8 @@ public sealed class BricksNetOperation : IBricksNetOperation
         }
 
         _closed = true;
+        ReleaseProvider();
+        _buffer.Clear();
         await _backend.CloseAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -122,59 +150,32 @@ public sealed class BricksNetOperation : IBricksNetOperation
     private async Task<List<IReadOnlyDictionary<string, object?>>> MaterializeAllAsync(
         CancellationToken cancellationToken)
     {
-        await EnsureResultsAsync(cancellationToken).ConfigureAwait(false);
-
         var rows = new List<IReadOnlyDictionary<string, object?>>();
         while (_buffer.Count > 0)
         {
             rows.Add(_buffer.Dequeue());
         }
 
-        while (_provider!.HasMoreRows)
+        while (true)
         {
-            var chunk = await _provider.FetchNextChunkAsync(cancellationToken).ConfigureAwait(false);
+            var chunk = await ReadNextChunkAsync(cancellationToken).ConfigureAwait(false);
             if (chunk.Count == 0)
             {
-                break;
+                return rows;
             }
 
             rows.AddRange(chunk);
         }
-
-        return rows;
-    }
-
-    /// <summary>
-    /// Ensures the statement has completed and a results provider exists. A single backend fetch is
-    /// issued; the provider then pages internally (Arrow batches, CloudFetch links). This covers the
-    /// REST inline/CloudFetch results and the Thrift inline-Arrow/CloudFetch results in full.
-    /// </summary>
-    private async Task EnsureResultsAsync(CancellationToken cancellationToken)
-    {
-        if (_provider is not null)
-        {
-            return;
-        }
-
-        await EnsureCompletedAsync(cancellationToken).ConfigureAwait(false);
-
-        using Activity? activity = BricksNetActivitySource.StartResultFetch(Id, _backendName);
-
-        var fetch = await _backend
-            .FetchResultsAsync(new FetchOptions { MaxRows = _maxRows, CancellationToken = cancellationToken })
-            .ConfigureAwait(false);
-
-        _provider = ResultHandlerFactory.Create(fetch);
     }
 
     private async Task FillBufferAsync(int target, CancellationToken cancellationToken)
     {
-        while (_buffer.Count < target && _provider!.HasMoreRows)
+        while (_buffer.Count < target)
         {
-            var chunk = await _provider.FetchNextChunkAsync(cancellationToken).ConfigureAwait(false);
+            var chunk = await ReadNextChunkAsync(cancellationToken).ConfigureAwait(false);
             if (chunk.Count == 0)
             {
-                break;
+                return;
             }
 
             foreach (var row in chunk)
@@ -182,6 +183,61 @@ public sealed class BricksNetOperation : IBricksNetOperation
                 _buffer.Enqueue(row);
             }
         }
+    }
+
+    /// <summary>
+    /// Returns the next non-empty chunk of rows, or an empty list once the result set is exhausted.
+    /// Drains the current results provider, then requests the next backend page (REST result chunk
+    /// or Thrift <c>FETCH_NEXT</c>) for as long as the backend reports more rows.
+    /// </summary>
+    private async Task<IReadOnlyList<IReadOnlyDictionary<string, object?>>> ReadNextChunkAsync(
+        CancellationToken cancellationToken)
+    {
+        await EnsureCompletedAsync(cancellationToken).ConfigureAwait(false);
+
+        while (true)
+        {
+            if (_provider is { HasMoreRows: true } provider)
+            {
+                var chunk = await provider.FetchNextChunkAsync(cancellationToken).ConfigureAwait(false);
+                if (chunk.Count > 0)
+                {
+                    return chunk;
+                }
+
+                continue;
+            }
+
+            if (!_backendHasMoreRows)
+            {
+                return Array.Empty<IReadOnlyDictionary<string, object?>>();
+            }
+
+            await FetchNextPageAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task FetchNextPageAsync(CancellationToken cancellationToken)
+    {
+        using Activity? activity = BricksNetActivitySource.StartResultFetch(Id, _backendName);
+
+        var fetch = await _backend
+            .FetchResultsAsync(new FetchOptions { MaxRows = _maxRows, CancellationToken = cancellationToken })
+            .ConfigureAwait(false);
+
+        ReleaseProvider();
+        _provider = ResultHandlerFactory.Create(fetch);
+        _backendHasMoreRows = fetch.HasMoreRows;
+        if (_schema is null || fetch.Schema.Count > 0)
+        {
+            _schema = fetch.Schema;
+        }
+    }
+
+    private void ReleaseProvider()
+    {
+        (_provider as IDisposable)?.Dispose();
+        _provider = null;
     }
 
     private async Task EnsureCompletedAsync(CancellationToken cancellationToken)
@@ -206,9 +262,15 @@ public sealed class BricksNetOperation : IBricksNetOperation
                     return;
 
                 case QueryStatus.Failed:
-                    LogMessages.StatementFailed(_logger, Id, errorCode: "0", sqlState: string.Empty);
-                    throw new BricksNetException(
-                        $"Statement '{Id}' failed.", sqlState: null, errorCode: 0, queryId: Id);
+                    var failure = (_backend as IOperationFailureSource)?.CreateFailureException()
+                        ?? new BricksNetException(
+                            $"Statement '{Id}' failed.", sqlState: null, errorCode: 0, queryId: Id);
+                    LogMessages.StatementFailed(
+                        _logger,
+                        Id,
+                        errorCode: failure.ErrorCode.ToString(CultureInfo.InvariantCulture),
+                        sqlState: failure.SqlState ?? string.Empty);
+                    throw failure;
 
                 case QueryStatus.Cancelled:
                     throw new BricksNetException(

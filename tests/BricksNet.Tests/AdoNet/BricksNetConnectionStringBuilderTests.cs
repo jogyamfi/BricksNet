@@ -103,6 +103,17 @@ public class BricksNetConnectionStringBuilderTests
     }
 
     [Fact]
+    public void UseCloudFetch_ParsesFromConnectionString_AndProjects()
+    {
+        var builder = new BricksNetConnectionStringBuilder(
+            "Host=h;HttpPath=/sql/1.0/warehouses/x;UseCloudFetch=true");
+
+        Assert.True(builder.UseCloudFetch);
+        Assert.True(builder.ToClientOptions(out _).UseCloudFetch);
+        Assert.False(new BricksNetConnectionStringBuilder("Host=h;HttpPath=/p").UseCloudFetch);
+    }
+
+    [Fact]
     public void ToClientOptions_BuildsProxyOptions_WhenProxyUriSet()
     {
         var builder = new BricksNetConnectionStringBuilder

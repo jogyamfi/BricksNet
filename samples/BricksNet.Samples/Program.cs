@@ -19,6 +19,8 @@ const string Usage = """
       AdoNetDapper — ADO.NET provider with Dapper (dynamic + typed POCO)
       Di           — Dependency Injection via AddBricksNet()
 
+    With no argument, FluentPat runs.
+
     Credentials:
       Create appsettings.User.json (git-ignored) beside appsettings.json,
       or set environment variables using double-underscore as separator:
@@ -27,13 +29,9 @@ const string Usage = """
         Databricks__Token=dapi...
     """;
 
-var demo = args.Length > 0 ? args[0] : string.Empty;
-
-if (string.IsNullOrEmpty(demo))
-{
-    Console.WriteLine(Usage);
-    //return;
-}
+// With no argument (e.g. F5 in the IDE) the PAT demo runs by default.
+const string DefaultDemo = "FluentPat";
+var demo = args.Length > 0 ? args[0] : DefaultDemo;
 
 Console.WriteLine($"Running demo: {demo}");
 Console.WriteLine();
@@ -46,8 +44,7 @@ try
         "FluentOAuth"  => FluentOAuthDemo.RunAsync(config),
         "AdoNetDapper" => AdoNetDapperDemo.RunAsync(config),
         "Di"           => DiDemo.RunAsync(config),
-        _              => FluentPatDemo.RunAsync(config),
-       //  _              => Task.FromException(new ArgumentException($"Unknown demo '{demo}'."))
+        _              => Task.FromException(new ArgumentException($"Unknown demo '{demo}'.")),
     });
 }
 catch (InvalidOperationException ex) when (ex.Message.EndsWith("not configured.", StringComparison.Ordinal))

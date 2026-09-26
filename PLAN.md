@@ -1,16 +1,16 @@
-# BricksNet — .NET 8 Implementation Plan
+# BricksNet — .NET 10 Implementation Plan
 
 > Output file: `bricksnet/PLAN.md`
 > Companion skills: `bricksnet/.github/instructions/*.instructions.md`
 
 ## Overview
 
-`BricksNet` is a .NET 8 Databricks SQL client library, NuGet-publishable as **`BricksNet`**. It provides two complementary surfaces over the same core:
+`BricksNet` is a .NET 10 Databricks SQL client library, NuGet-publishable as **`BricksNet`**. It provides two complementary surfaces over the same core:
 
 1. **A modern fluent async API** — `BricksNetClient → BricksNetSession → BricksNetOperation`, mirroring the Node.js driver (`databricks-sql-nodejs/lib/index.ts`) and adapted to C# `async`/`await` idioms.
 2. **A `System.Data.Common`-compliant ADO.NET provider** — `BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`, etc. — wrapping the fluent API, enabling Dapper / EF Core (read) compatibility.
 
-The library targets `net8.0` only and exposes two interchangeable backends — **REST** (SQL Exec API) and **Thrift** (TCLIService) — selectable via `BricksNetClientOptions.UseThrift`. It mirrors the Java JDBC driver's dual-protocol design (`IDatabricksClient` → `DatabricksSdkClient` / `DatabricksThriftServiceClient`) and the Node.js three-layer backend abstraction (`IBackend` / `ISessionBackend` / `IOperationBackend`).
+The library targets `net10.0` only and exposes two interchangeable backends — **REST** (SQL Exec API) and **Thrift** (TCLIService) — selectable via `BricksNetClientOptions.UseThrift`. It mirrors the Java JDBC driver's dual-protocol design (`IDatabricksClient` → `DatabricksSdkClient` / `DatabricksThriftServiceClient`) and the Node.js three-layer backend abstraction (`IBackend` / `ISessionBackend` / `IOperationBackend`).
 
 ### Guiding principles
 
@@ -94,7 +94,7 @@ Create the `bricksnet/` solution with all projects, shared build configuration, 
    ```xml
    <Project>
      <PropertyGroup>
-       <TargetFramework>net8.0</TargetFramework>
+       <TargetFramework>net10.0</TargetFramework>
        <Nullable>enable</Nullable>
        <ImplicitUsings>enable</ImplicitUsings>
        <LangVersion>latest</LangVersion>
@@ -108,11 +108,11 @@ Create the `bricksnet/` solution with all projects, shared build configuration, 
 3. Create `Directory.Packages.props` with `<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>` and the consolidated package versions (see the NuGet table at the end of this plan).
 4. Create `.editorconfig` with C# conventions: `dotnet_sort_system_directives_first = true`, `csharp_style_namespace_declarations = file_scoped:warning`, `dotnet_diagnostic.CA2007.severity = warning` (ConfigureAwait), 4-space indent, `end_of_line = lf`.
 5. Create `.gitignore` from the standard `dotnet new gitignore` template (`bin/`, `obj/`, `*.user`, `.vs/`, `TestResults/`, `*.nupkg`).
-6. Create `src/BricksNet/BricksNet.csproj` (library, `net8.0`) with `GenerateDocumentationFile=true` and package metadata stubs (filled in fully in Phase 12).
+6. Create `src/BricksNet/BricksNet.csproj` (library, `net10.0`) with `GenerateDocumentationFile=true` and package metadata stubs (filled in fully in Phase 12).
 7. Create `tests/BricksNet.Tests/BricksNet.Tests.csproj` referencing `xunit`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk`, `coverlet.collector`, `Moq`, `RichardSzalay.MockHttp`, and a `ProjectReference` to `BricksNet`; set `<IsPackable>false</IsPackable>`.
 8. Create `tests/BricksNet.IntegrationTests/BricksNet.IntegrationTests.csproj` referencing the same test packages plus `Microsoft.AspNetCore.Mvc.Testing`; set `<IsPackable>false</IsPackable>`.
 9. Create `BricksNet.sln` and add all three projects with `dotnet sln add`.
-10. Create `.github/workflows/build.yml`: checkout → `actions/setup-dotnet@v4` (8.0.x) → `dotnet restore` → `dotnet build -c Release --no-restore` → `dotnet test --filter "Category!=E2E"`.
+10. Create `.github/workflows/build.yml`: checkout → `actions/setup-dotnet@v4` (10.0.x) → `dotnet restore` → `dotnet build -c Release --no-restore` → `dotnet test --filter "Category!=E2E"`.
 
 ### Key Classes & Interfaces
 None (scaffolding only).
@@ -378,7 +378,7 @@ Databricks SQL Statement Execution API (`https://docs.databricks.com/api/workspa
 `RestBackend`, `RestSessionBackend`, `RestOperationBackend`, `RestStatementPoller`, `SqlExecHttpClient`, DTOs.
 
 ### NuGet Dependencies
-`System.Text.Json` (built into net8.0).
+`System.Text.Json` (built into net10.0).
 
 ### .NET-Specific Considerations
 - Use `JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, DefaultIgnoreCondition = WhenWritingNull }`.
@@ -622,7 +622,7 @@ Make the library publishable and CI green. *(Depends on all prior phases.)*
    <Version>0.1.0-alpha</Version>
    <Authors>BricksNet Contributors</Authors>
    <Company>BricksNet</Company>
-   <Description>BricksNet — Databricks SQL client library for .NET 8</Description>
+   <Description>BricksNet — Databricks SQL client library for .NET 10</Description>
    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
    <PackageReadmeFile>README.md</PackageReadmeFile>
    <PackageProjectUrl>https://github.com/your-org/bricksnet</PackageProjectUrl>
@@ -637,7 +637,7 @@ Make the library publishable and CI green. *(Depends on all prior phases.)*
    Add `Microsoft.SourceLink.GitHub` package reference.
 2. Write `README.md` (solution root): quick-start for both the fluent API and ADO.NET, connection string format, PAT + OAuth examples, a NuGet badge placeholder.
 3. Write `CHANGELOG.md` in Keep-a-Changelog format with an `[Unreleased]` section.
-4. Finalise `.github/workflows/build.yml`: trigger on push/PR to `main`; checkout → setup .NET 8 → restore → build → `dotnet test --collect:"XPlat Code Coverage" --filter "Category!=E2E"` → upload coverage to Codecov → `dotnet pack -c Release` (on `main` only).
+4. Finalise `.github/workflows/build.yml`: trigger on push/PR to `main`; checkout → setup .NET 10 → restore → build → `dotnet test --collect:"XPlat Code Coverage" --filter "Category!=E2E"` → upload coverage to Codecov → `dotnet pack -c Release` (on `main` only).
 5. Create `.github/workflows/security.yml`: `dotnet list package --vulnerable --include-transitive` (fail on any) + OWASP `dependency-check/Dependency-Check_Action`.
 
 ### Key Classes & Interfaces

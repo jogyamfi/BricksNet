@@ -87,7 +87,8 @@ public sealed class RestSessionBackendTests
         """{"statement_id":"01ef-meta","status":{"state":"SUCCEEDED"}}""";
 
     private static (RestSessionBackend Backend, RestTestHandler Handler) CreateBackend(
-        BackendSessionOptions? options = null)
+        BackendSessionOptions? options = null,
+        bool useCloudFetch = false)
     {
         var handler = new RestTestHandler((_, _) => (HttpStatusCode.OK, SucceededJson));
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://fake.local") };
@@ -95,7 +96,7 @@ public sealed class RestSessionBackendTests
         var client = new SqlExecHttpClient(bricks);
         var poller = new RestStatementPoller(client);
         var backend = new RestSessionBackend(
-            client, poller, "wh-1", options ?? new BackendSessionOptions());
+            client, poller, "wh-1", options ?? new BackendSessionOptions(), useCloudFetch);
         return (backend, handler);
     }
 
@@ -123,7 +124,7 @@ public sealed class RestSessionBackendTests
 
         await backend.GetSchemasAsync("cat", "pat%");
 
-        Assert.Equal("SHOW SCHEMAS IN `cat` LIKE 'pat%'", LastStatement(handler));
+        Assert.Equal("SHOW SCHEMAS IN `cat` LIKE 'pat*'", LastStatement(handler));
     }
 
     [Fact]
@@ -143,7 +144,7 @@ public sealed class RestSessionBackendTests
 
         await backend.GetTablesAsync("cat", "sch", "t%");
 
-        Assert.Equal("SHOW TABLES IN `cat`.`sch` LIKE 't%'", LastStatement(handler));
+        Assert.Equal("SHOW TABLES IN `cat`.`sch` LIKE 't*'", LastStatement(handler));
     }
 
     [Fact]
@@ -165,6 +166,21 @@ public sealed class RestSessionBackendTests
             () => backend.GetColumnsAsync(null, null, null, null));
     }
 
+    [Theory]
+    [InlineData(false, "INLINE", "JSON_ARRAY")]
+    [InlineData(true, "EXTERNAL_LINKS", "ARROW_STREAM")]
+    public async Task ExecuteStatementAsync_SelectsDispositionFromUseCloudFetch(
+        bool useCloudFetch, string disposition, string format)
+    {
+        var (backend, handler) = CreateBackend(useCloudFetch: useCloudFetch);
+
+        await backend.ExecuteStatementAsync("SELECT 1", options: null);
+
+        using var doc = JsonDocument.Parse(handler.Bodies[^1]!);
+        Assert.Equal(disposition, doc.RootElement.GetProperty("disposition").GetString());
+        Assert.Equal(format, doc.RootElement.GetProperty("format").GetString());
+    }
+
     [Fact]
     public async Task ExecuteStatementAsync_CarriesSessionDefaults()
     {
@@ -183,7 +199,8 @@ public sealed class RestSessionBackendTests
         Assert.Equal("SELECT 1", root.GetProperty("statement").GetString());
         Assert.Equal("main", root.GetProperty("catalog").GetString());
         Assert.Equal("default", root.GetProperty("schema").GetString());
-        Assert.Equal(500, root.GetProperty("row_limit").GetInt32());
+        // MaxRows is a client page size; sending it as row_limit would truncate results server-side.
+        Assert.False(root.TryGetProperty("row_limit", out _));
     }
 
     [Fact]
