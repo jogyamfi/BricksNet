@@ -360,6 +360,10 @@ The baseline suite passes. The Blog E2E suite passes locally. The unsupported-sh
 | non-equality correlated `SelectMany(...Take(n))` | `CROSS JOIN LATERAL` / `LEFT JOIN LATERAL … ON TRUE` | LATERAL with correlated `LIMIT` support varies by runtime |
 | `Skip` without `Take` | `OFFSET n` with no `LIMIT` | confirm standalone `OFFSET` is accepted |
 | Typed literals (Phase 2) | `TIMESTAMP_NTZ'…'`, `1.5BD`, `X'…'`, `5Y` | confirm on SQL warehouse and cluster |
+| `DateTime.Now`/`UtcNow` (Phase 4) | `localtimestamp()`, `convert_timezone('UTC', localtimestamp())` | needs a recent runtime; compare with LINQ-to-Objects |
+| Date arithmetic (Phase 4) | `timestampadd(DAY, 7L, ts)`, `timestampdiff(HOUR, a, b)` | unit keyword syntax; result type for `TIMESTAMP_NTZ` input |
+| String functions (Phase 4) | `contains`, `startswith`, `endswith`, `btrim`, `rlike(s, p)` | function forms (not operators) on the target runtime |
+| `DateTimeOffset` parts (Phase 4) | `year(ts)` on `TIMESTAMP` | evaluated in the session time zone; matches .NET only when it is UTC |
 
 ---
 
@@ -401,6 +405,18 @@ Translate common .NET members and methods to Databricks built-ins.
 ### Tests
 - A baseline test per translation.
 - Live E2E correctness tests comparing server results with LINQ-to-Objects results over the same seeded data. This catches the off-by-one (`substring`, `instr`) and rounding differences.
+
+### Status (implemented)
+- Done: all translations in the table, with SQL baseline tests.
+- **Additions beyond the table:**
+  - `Regex.IsMatch` with `RegexOptions.IgnoreCase` (constant patterns only);
+  - `Math.Truncate` as `CASE`, because Databricks `trunc` is a date function;
+  - `byte[].Length` → `length`;
+  - `EF.Functions.Greatest`/`Least`.
+- **EF 10 routes `Math.Max`/`Min` to `GenerateGreatest`/`GenerateLeast`** on the SQL-translating visitor, not to method translators. `BricksNetSqlTranslatingExpressionVisitor` handles them, and `byte[].Length` too.
+- **`string.Join` over an ordered group** is not translated to `collect_list`, because Databricks doesn't guarantee its order. EF falls back to fetching the ordered elements and joining them client-side, which is correct but transfers more rows.
+- **Version gating (step 3) is not implemented.** Every function used needs DBR 13.3 LTS or later, the proposed minimum, so there is nothing to gate yet.
+- **Not translated** (EF reports a translation error): `TrimStart(char)`/`TrimEnd(char)` (Databricks argument order for these is ambiguous), `Millisecond`, `DateTime.ToString()` (format differs from .NET), and `Math.Round` with `ToZero`/`ToNegativeInfinity`/`ToPositiveInfinity`.
 
 ---
 

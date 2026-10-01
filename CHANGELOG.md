@@ -59,6 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Contains` on a list expands to `IN (:p1, :p2, …)`. Filtering, ordering, aggregates, `GroupBy`,
     joins, `Include` (single and split query), correlated subqueries, per-group `Take`/`First` (via
     `ROW_NUMBER()`) and set operations have SQL baseline tests.
+  - .NET member and method translations to Databricks functions:
+    - Strings: `Length`, `ToUpper`/`ToLower`, `Trim*`, `Substring` and `IndexOf` (converted to
+      1-based positions), `Replace`, `Contains`/`StartsWith`/`EndsWith`,
+      `IsNullOrEmpty`/`IsNullOrWhiteSpace`, `Regex.IsMatch` → `rlike`, and `string.Join` over a group
+      → `array_join(collect_list(…))`.
+    - Math: `Math.Round` → `bround` (half-to-even, as .NET), and `round` for `AwayFromZero`.
+      `Ceiling`/`Floor`/`Truncate`, `Pow`/`Sqrt`/`Log`/trigonometry, `Sign`, and `Math.Max`/`Min` →
+      `greatest`/`least`.
+    - Dates: `DateTime`/`DateTimeOffset`/`DateOnly` parts, `Now`/`UtcNow`/`Today`, and `Add*` →
+      `timestampadd`/`date_add`/`add_months`.
+    - Conversions: `Convert.To*` and `ToString()` → `CAST`. `Guid.NewGuid()` → `uuid()`.
+      `byte[].Length` → `length`.
+  - Databricks `EF.Functions` methods: `ILike`, and `DateDiffYear`/`Month`/`Day`/`Hour`/`Minute`/`Second`
+    → `timestampdiff`.
 
 ### Changed
 - **Breaking:** `TIMESTAMP_NTZ` values are returned as `DateTime` (`Kind = Unspecified`) instead of

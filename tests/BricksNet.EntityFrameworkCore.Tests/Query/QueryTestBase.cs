@@ -10,6 +10,8 @@ public abstract class QueryTestBase
 
     private protected ShopContext CreateContext() => ShopContext.Create(Databricks);
 
+    private protected AllTypesContext CreateAllTypesContext() => AllTypesContext.Create(Databricks);
+
     /// <summary>Asserts the SQL of every statement executed so far, in order.</summary>
     protected void AssertSql(params string[] expected)
     {
