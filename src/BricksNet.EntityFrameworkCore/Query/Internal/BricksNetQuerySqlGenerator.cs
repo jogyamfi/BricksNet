@@ -108,6 +108,112 @@ public class BricksNetQuerySqlGenerator : QuerySqlGenerator
         return tableExpression;
     }
 
+    /// <summary>
+    /// Generates <c>ExecuteUpdate</c>. Databricks has no <c>UPDATE ... FROM</c>, so when EF needs other
+    /// tables (a navigation filter, <c>Take</c>, ...) they move into a correlated
+    /// <c>WHERE EXISTS (SELECT 1 FROM ... WHERE ...)</c>. Values taken from those other tables cannot
+    /// be expressed that way and are rejected.
+    /// </summary>
+    protected override Expression VisitUpdate(UpdateExpression updateExpression)
+    {
+        ArgumentNullException.ThrowIfNull(updateExpression);
+
+        var select = updateExpression.SelectExpression;
+        var targetAlias = updateExpression.Table.Alias;
+        var otherTables = select.Tables.Where(t => t.Alias != targetAlias).ToList();
+        if (otherTables.Count == 0)
+        {
+            return base.VisitUpdate(updateExpression);
+        }
+
+        var aliases = new TableAliasCollector();
+        foreach (var setter in updateExpression.ColumnValueSetters)
+        {
+            aliases.Visit(setter.Value);
+        }
+
+        if (aliases.Aliases.Any(alias => alias != targetAlias))
+        {
+            throw new InvalidOperationException(
+                "This ExecuteUpdate sets values taken from another table, which Databricks cannot express: it has no "
+                + "UPDATE ... FROM. Use a MERGE INTO statement through ExecuteSql instead.");
+        }
+
+        Sql.Append("UPDATE ");
+        Visit(updateExpression.Table);
+        Sql.AppendLine().Append("SET ");
+        for (var i = 0; i < updateExpression.ColumnValueSetters.Count; i++)
+        {
+            if (i > 0)
+            {
+                Sql.Append(",").AppendLine().Append("    ");
+            }
+
+            var setter = updateExpression.ColumnValueSetters[i];
+            Sql.Append(Dependencies.SqlGenerationHelper.DelimitIdentifier(setter.Column.Name)).Append(" = ");
+            Visit(setter.Value);
+        }
+
+        // Inside EXISTS, inner joins become FROM entries whose join conditions move into WHERE.
+        var fromTables = new List<TableExpressionBase>();
+        var conditions = new List<SqlExpression>();
+        foreach (var table in otherTables)
+        {
+            switch (table)
+            {
+                case InnerJoinExpression innerJoin:
+                    fromTables.Add(innerJoin.Table);
+                    conditions.Add(innerJoin.JoinPredicate);
+                    break;
+                case CrossJoinExpression crossJoin:
+                    fromTables.Add(crossJoin.Table);
+                    break;
+                case JoinExpressionBase:
+                    throw new InvalidOperationException(
+                        "This ExecuteUpdate needs an outer join, which Databricks cannot express in an UPDATE. "
+                        + "Use a MERGE INTO statement through ExecuteSql instead.");
+                default:
+                    fromTables.Add(table);
+                    break;
+            }
+        }
+
+        if (select.Predicate is not null)
+        {
+            conditions.Add(select.Predicate);
+        }
+
+        Sql.AppendLine().Append("WHERE EXISTS (");
+        Sql.IncrementIndent();
+        try
+        {
+            Sql.AppendLine().Append("SELECT 1").AppendLine().Append("FROM ");
+            for (var i = 0; i < fromTables.Count; i++)
+            {
+                if (i > 0)
+                {
+                    Sql.Append(", ");
+                }
+
+                Visit(fromTables[i]);
+            }
+
+            if (conditions.Count > 0)
+            {
+                Sql.AppendLine().Append("WHERE ");
+                Visit(conditions.Aggregate((left, right) =>
+                    new SqlBinaryExpression(ExpressionType.AndAlso, left, right, typeof(bool), left.TypeMapping)));
+            }
+        }
+        finally
+        {
+            Sql.DecrementIndent();
+        }
+
+        Sql.Append(")");
+        return updateExpression;
+    }
+
     /// <summary>Generates <c>CROSS APPLY</c> as a <c>CROSS JOIN LATERAL</c>.</summary>
     protected override Expression VisitCrossApply(CrossApplyExpression crossApplyExpression)
     {
@@ -142,6 +248,23 @@ public class BricksNetQuerySqlGenerator : QuerySqlGenerator
         if (parenthesize)
         {
             Sql.Append(")");
+        }
+    }
+
+    /// <summary>Collects the table aliases referenced by columns in an expression.</summary>
+    private sealed class TableAliasCollector : ExpressionVisitor
+    {
+        public HashSet<string> Aliases { get; } = new(StringComparer.Ordinal);
+
+        protected override Expression VisitExtension(Expression node)
+        {
+            if (node is ColumnExpression column)
+            {
+                Aliases.Add(column.TableAlias);
+                return node;
+            }
+
+            return base.VisitExtension(node);
         }
     }
 

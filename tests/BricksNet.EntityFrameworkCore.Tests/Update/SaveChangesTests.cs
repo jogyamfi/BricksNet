@@ -184,7 +184,8 @@ public sealed class SaveChangesTests : QueryTestBase
         Databricks.Responder = _ => FakeResult.AffectedRows(1);
         using var provider = new CapturingLoggerProvider();
         using var loggerFactory = LoggerFactory.Create(b => b.AddProvider(provider));
-        await using var context = CreateAccountContext(loggerFactory);
+        // MaxBatchSize(1) keeps the inserts as separate statements instead of one multi-row INSERT.
+        await using var context = CreateAccountContext(loggerFactory, o => o.MaxBatchSize(1));
         context.AddRange(new Account { Id = 1, Owner = "a" }, new Account { Id = 2, Owner = "b" }, new Account { Id = 3, Owner = "c" });
 
         Assert.Equal(3, await context.SaveChangesAsync());
@@ -201,7 +202,8 @@ public sealed class SaveChangesTests : QueryTestBase
         using var loggerFactory = LoggerFactory.Create(b => b.AddProvider(provider));
         await using var context = CreateAccountContext(
             loggerFactory,
-            options: o => o.ConfigureWarnings(w => w.Ignore(BricksNetEventId.NonAtomicSaveChanges)));
+            o => o.MaxBatchSize(1),
+            o => o.ConfigureWarnings(w => w.Ignore(BricksNetEventId.NonAtomicSaveChanges)));
         context.AddRange(new Account { Id = 1, Owner = "a" }, new Account { Id = 2, Owner = "b" });
 
         await context.SaveChangesAsync();
@@ -216,7 +218,7 @@ public sealed class SaveChangesTests : QueryTestBase
         Databricks.Responder = s => fail && s.Parameters.Any(p => Equals(p.Value, "b"))
             ? throw new BricksNetException("[DIVIDE_BY_ZERO] boom", null, 0, null)
             : FakeResult.AffectedRows(1);
-        await using var context = CreateAccountContext();
+        await using var context = CreateAccountContext(bricksNetOptions: o => o.MaxBatchSize(1));
         var first = new Account { Id = 1, Owner = "a" };
         var second = new Account { Id = 2, Owner = "b" };
         context.AddRange(first, second);
@@ -243,7 +245,7 @@ public sealed class SaveChangesTests : QueryTestBase
         Databricks.Responder = s => s.Parameters.Any(p => Equals(p.Value, "b")) && ++attempts == 1
             ? throw new BricksNetException("[DELTA_CONCURRENT_APPEND] conflict", null, 0, null)
             : FakeResult.AffectedRows(1);
-        await using var context = CreateAccountContext(bricksNetOptions: o => o.EnableRetryOnFailure(3, TimeSpan.Zero));
+        await using var context = CreateAccountContext(bricksNetOptions: o => o.EnableRetryOnFailure(3, TimeSpan.Zero).MaxBatchSize(1));
         context.AddRange(new Account { Id = 1, Owner = "a" }, new Account { Id = 2, Owner = "b" });
 
         Assert.Equal(2, await context.SaveChangesAsync());

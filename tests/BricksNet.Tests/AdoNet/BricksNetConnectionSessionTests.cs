@@ -222,6 +222,71 @@ public sealed class BricksNetConnectionSessionTests
         Assert.Equal(string.Empty, connection.ServerVersion);
     }
 
+    [Fact]
+    public void KeptSessionIdleTimeout_IsReadFromConnectionString_WithDefault()
+    {
+        using var configured = new BricksNetConnection(BaseConnectionString + ";KeptSessionIdleTimeoutSeconds=60", (_, _) => null!);
+        using var defaulted = new BricksNetConnection(BaseConnectionString, (_, _) => null!);
+
+        Assert.Equal(TimeSpan.FromSeconds(60), configured.KeptSessionIdleTimeout);
+        Assert.Equal(BricksNetConnection.DefaultKeptSessionIdleTimeout, defaulted.KeptSessionIdleTimeout);
+    }
+
+    [Fact]
+    public async Task KeptSession_IdleWithinTimeout_IsReused()
+    {
+        var factory = new CountingFactory();
+        var clock = new ManualClock();
+        await using var connection = new BricksNetConnection(BaseConnectionString, factory.Create)
+        {
+            KeepSessionAlive = true,
+            KeptSessionIdleTimeout = TimeSpan.FromMinutes(15),
+            TimeProvider = clock,
+        };
+
+        await connection.OpenAsync();
+        await connection.CloseAsync();
+        clock.Advance(TimeSpan.FromMinutes(14));
+        await connection.OpenAsync();
+
+        Assert.Single(factory.Sessions);
+    }
+
+    [Fact]
+    public async Task KeptSession_IdlePastTimeout_IsReplaced()
+    {
+        var factory = new CountingFactory();
+        var clock = new ManualClock();
+        await using var connection = new BricksNetConnection(BaseConnectionString, factory.Create)
+        {
+            KeepSessionAlive = true,
+            KeptSessionIdleTimeout = TimeSpan.FromMinutes(15),
+            TimeProvider = clock,
+        };
+
+        await connection.OpenAsync();
+        await connection.CloseAsync();
+        clock.Advance(TimeSpan.FromMinutes(16));
+        await connection.OpenAsync();
+
+        Assert.Equal(2, factory.Sessions.Count);
+        Assert.True(factory.Sessions[0].Closed);
+        Assert.False(factory.Sessions[1].Closed);
+        Assert.Equal(ConnectionState.Open, connection.State);
+    }
+
+    /// <summary>A clock that only moves when told to.</summary>
+    private sealed class ManualClock : TimeProvider
+    {
+        private long _timestamp = 1;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _timestamp;
+
+        public void Advance(TimeSpan by) => _timestamp += by.Ticks;
+    }
+
     private sealed class ThrowingSessionClient : IBricksNetClient
     {
         public bool Closed { get; private set; }

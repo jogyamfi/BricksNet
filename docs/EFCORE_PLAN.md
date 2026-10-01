@@ -364,6 +364,10 @@ The baseline suite passes. The Blog E2E suite passes locally. The unsupported-sh
 | Date arithmetic (Phase 4) | `timestampadd(DAY, 7L, ts)`, `timestampdiff(HOUR, a, b)` | unit keyword syntax; result type for `TIMESTAMP_NTZ` input |
 | String functions (Phase 4) | `contains`, `startswith`, `endswith`, `btrim`, `rlike(s, p)` | function forms (not operators) on the target runtime |
 | `DateTimeOffset` parts (Phase 4) | `year(ts)` on `TIMESTAMP` | evaluated in the session time zone; matches .NET only when it is UTC |
+| `ExecuteDelete`/`ExecuteUpdate` (Phase 7) | `DELETE FROM t AS a …`, `UPDATE t AS a SET …` | confirm the `AS` alias form is accepted in Delta DML |
+| `ExecuteUpdate` with joins (Phase 7) | `UPDATE … WHERE EXISTS (correlated subquery)`; `DELETE … WHERE Id IN (subquery with LIMIT)` | Delta's limits on subqueries in DML `WHERE` |
+| Multi-row insert (Phase 7) | `INSERT … VALUES (…), (…)` with up to 256 parameters | parameter-count limit of the SQL Statement Execution API and Thrift; `num_affected_rows` equals the row count |
+| `DbUpdateConcurrencyException` (Phase 6) | `UPDATE … WHERE Id = :p AND Version = :p` | `num_affected_rows` is 0 when nothing matches |
 
 ---
 
@@ -516,6 +520,19 @@ Make writes and repeated queries practical given per-statement latency (D14).
 ### Tests
 - Baselines for `ExecuteUpdate`/`ExecuteDelete`/MERGE and coalesced INSERT.
 - Live E2E correctness and rows-affected counts.
+
+### Status (implemented)
+- **`ExecuteDelete`:** EF's default translation already fits Delta. Complex shapes (navigation filters, `Take`) become `WHERE Id IN (subquery)`.
+- **`ExecuteUpdate` with joins:**
+  - EF generates PostgreSQL-style `UPDATE … FROM`. `VisitUpdate` rewrites it as `UPDATE … WHERE EXISTS (SELECT 1 FROM … WHERE …)`, with inner-join conditions moved into the `WHERE`.
+  - **Changed from the plan:** shapes that take values from another table, or need an outer join, throw with guidance to use `MERGE INTO` via `ExecuteSql`, instead of generating `MERGE`. EF 10 currently fails on the common "set from a navigation" lambda before the provider sees it.
+- **Insert coalescing:** `BricksNetModificationCommandBatch` combines consecutive inserts into one table with identical columns into `INSERT … VALUES (…), (…)`.
+  - It is capped by `MaxBatchSize` (default 1000 rows; `MaxBatchSize(1)` disables combining) and by 256 parameters per statement.
+  - The rows share one `num_affected_rows` check, through `NotLastInResultSet` mappings.
+  - A combined insert is one atomic statement, so it does not log the non-atomic warning.
+- **Session health (step 4):** a full pool was not needed. `AddDbContextPool` reuses each context's connection and its kept session. Instead, `BricksNetConnection.KeptSessionIdleTimeout` (default 15 min, `KeptSessionIdleTimeoutSeconds` keyword) replaces a kept session idle past the timeout on the next open, so an expired session isn't reused. That is cheaper than a `SELECT 1` health check.
+- **Compiled queries** (`EF.CompileAsyncQuery`) work; a test covers them.
+- **Benchmarks (step 6)** need a live warehouse and move to Phase 8.
 
 ---
 

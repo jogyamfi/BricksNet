@@ -115,6 +115,28 @@ public class BricksNetUpdateSqlGenerator : UpdateSqlGenerator
         return RowsAffectedResult;
     }
 
+    /// <summary>
+    /// Appends one more row, <c>(values)</c>, to the multi-row <c>INSERT</c> already in
+    /// <paramref name="commandStringBuilder"/>. Used by <see cref="BricksNetModificationCommandBatch"/>.
+    /// </summary>
+    internal void AppendInsertValuesRow(StringBuilder commandStringBuilder, IReadOnlyModificationCommand command) =>
+        AppendValues(commandStringBuilder, command.TableName, command.Schema, command.ColumnModifications.Where(o => o.IsWrite).ToList());
+
+    /// <summary>
+    /// Whether <paramref name="next"/> can be added as another row of <paramref name="first"/>'s
+    /// <c>INSERT</c>: both insert into the same table and write the same columns.
+    /// </summary>
+    internal static bool CanShareInsert(IReadOnlyModificationCommand first, IReadOnlyModificationCommand next) =>
+        first.EntityState == Microsoft.EntityFrameworkCore.EntityState.Added
+        && next.EntityState == Microsoft.EntityFrameworkCore.EntityState.Added
+        && first.StoreStoredProcedure is null
+        && next.StoreStoredProcedure is null
+        && string.Equals(first.TableName, next.TableName, StringComparison.Ordinal)
+        && string.Equals(first.Schema, next.Schema, StringComparison.Ordinal)
+        && ReferenceEquals(first.Table, next.Table)
+        && first.ColumnModifications.Where(o => o.IsWrite).Select(o => o.ColumnName)
+            .SequenceEqual(next.ColumnModifications.Where(o => o.IsWrite).Select(o => o.ColumnName), StringComparer.Ordinal);
+
     /// <summary>The table name, catalog-qualified when the model assigns it a Unity Catalog catalog.</summary>
     private string QualifiedTable(IReadOnlyModificationCommand command)
     {

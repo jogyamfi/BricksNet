@@ -90,6 +90,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       on failure the entities of statements that already committed are marked as saved.
     - `EnableRetryOnFailure()` retries queries, and `SaveChanges` statements individually, on throttling,
       unavailability and Delta concurrent-write conflicts.
+    - Consecutive inserts into the same table become one multi-row `INSERT … VALUES (…), (…)`. This is
+      capped by `MaxBatchSize` (default 1000 rows; `MaxBatchSize(1)` disables it) and by 256 parameters
+      per statement.
+  - `ExecuteDelete` and `ExecuteUpdate`, returning the affected-row count. Updates that need other tables
+    use `WHERE EXISTS (…)`, because Databricks has no `UPDATE … FROM`. Updates that take values from
+    another table throw with guidance to use `MERGE`.
+- `BricksNetConnection.KeptSessionIdleTimeout` (`KeptSessionIdleTimeoutSeconds` keyword, default 15
+  minutes): a session kept by `KeepSessionAlive` that has been idle longer is replaced on the next open
+  rather than reused after the server may have expired it.
 
 ### Changed
 - **Breaking:** `TIMESTAMP_NTZ` values are returned as `DateTime` (`Kind = Unspecified`) instead of

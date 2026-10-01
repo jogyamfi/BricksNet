@@ -29,6 +29,7 @@ public sealed class BricksNetConnection : DbConnection
     private IBricksNetClient? _client;
     private IBricksNetSession? _session;
     private string? _serverVersion;
+    private long _keptSince;
     private ConnectionState _state = ConnectionState.Closed;
 
     /// <summary>Initialises an empty connection.</summary>
@@ -111,8 +112,12 @@ public sealed class BricksNetConnection : DbConnection
             _clientOptions = builder.ToClientOptions(out _accessToken);
             _sessionOptions = builder.ToSessionOptions();
             KeepSessionAlive = builder.KeepSessionAlive;
+            KeptSessionIdleTimeout = TimeSpan.FromSeconds(builder.KeptSessionIdleTimeoutSeconds);
         }
     }
+
+    /// <summary>The default for <see cref="KeptSessionIdleTimeout"/>: 15 minutes.</summary>
+    public static readonly TimeSpan DefaultKeptSessionIdleTimeout = TimeSpan.FromMinutes(15);
 
     /// <summary>
     /// When <see langword="true"/>, <see cref="Close"/> keeps the Databricks session open so the
@@ -121,10 +126,20 @@ public sealed class BricksNetConnection : DbConnection
     /// Defaults to <see langword="false"/>.
     /// </summary>
     /// <remarks>
-    /// The server can expire an idle session. Statements on an expired session fail; dispose the
-    /// connection and open a new one to recover.
+    /// The server can expire an idle session, so a session kept for longer than
+    /// <see cref="KeptSessionIdleTimeout"/> is replaced by a new one on the next open.
     /// </remarks>
     public bool KeepSessionAlive { get; set; }
+
+    /// <summary>
+    /// How long a session kept by <see cref="KeepSessionAlive"/> may sit idle before the next open
+    /// replaces it with a new session, rather than risk using one the server has expired. Set from the
+    /// <c>KeptSessionIdleTimeoutSeconds</c> connection-string keyword. Defaults to 15 minutes.
+    /// </summary>
+    public TimeSpan KeptSessionIdleTimeout { get; set; } = DefaultKeptSessionIdleTimeout;
+
+    /// <summary>The clock used to measure how long a kept session has been idle; replaceable in tests.</summary>
+    internal TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 
     /// <inheritdoc />
     public override string Database => _sessionOptions.Schema ?? string.Empty;
@@ -174,7 +189,15 @@ public sealed class BricksNetConnection : DbConnection
             throw new InvalidOperationException("No connection string or client options have been supplied.");
         }
 
-        // A client and session kept alive by a previous Close() are reused as-is.
+        // A session kept alive by a previous Close() is reused, unless it has been idle long enough that
+        // the server may have expired it.
+        if (_client is not null && _keptSince != 0 && TimeProvider.GetElapsedTime(_keptSince) > KeptSessionIdleTimeout)
+        {
+            await ReleaseStaleSessionAsync().ConfigureAwait(false);
+        }
+
+        _keptSince = 0;
+
         var factory = _client is not null
             ? null
             : _clientFactory ?? ClientFactory
@@ -217,12 +240,28 @@ public sealed class BricksNetConnection : DbConnection
             return;
         }
 
-        if (!KeepSessionAlive)
+        if (KeepSessionAlive)
+        {
+            _keptSince = TimeProvider.GetTimestamp();
+        }
+        else
         {
             await CleanupAsync().ConfigureAwait(false);
         }
 
         SetState(ConnectionState.Closed);
+    }
+
+    // Closing a session the server already expired can fail; the connection is replacing it anyway.
+    private async Task ReleaseStaleSessionAsync()
+    {
+        try
+        {
+            await CleanupAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+        }
     }
 
     /// <summary>
