@@ -1,3 +1,4 @@
+using BricksNet.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging;
@@ -21,18 +22,21 @@ internal sealed class ConfigurableContext : DbContext
     public static ConfigurableContext Create(
         FakeDatabricks databricks,
         Action<ModelBuilder> configureModel,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        Action<BricksNetDbContextOptionsBuilder>? bricksNetOptions = null,
+        Action<DbContextOptionsBuilder>? options = null)
     {
         // Not owned by the context: EF fails to dispose an owned connection after a model-build error,
         // which would hide the validation exception these tests assert on.
         var builder = new DbContextOptionsBuilder()
-            .UseBricksNet(databricks.CreateConnection(), contextOwnsConnection: false)
+            .UseBricksNet(databricks.CreateConnection(), contextOwnsConnection: false, bricksNetOptions)
             .ReplaceService<IModelCacheKeyFactory, UncachedModelCacheKeyFactory>();
         if (loggerFactory is not null)
         {
             builder.UseLoggerFactory(loggerFactory);
         }
 
+        options?.Invoke(builder);
         return new ConfigurableContext(builder.Options, configureModel);
     }
 

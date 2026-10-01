@@ -9,4 +9,9 @@ namespace BricksNet.EntityFrameworkCore.Diagnostics.Internal;
 /// </remarks>
 public class BricksNetLoggingDefinitions : RelationalLoggingDefinitions
 {
+    /// <summary>The definition of <see cref="BricksNetEventId.UniqueIndexNotEnforced"/>.</summary>
+    public EventDefinitionBase? LogUniqueIndexNotEnforced;
+
+    /// <summary>The definition of <see cref="BricksNetEventId.NonAtomicSaveChanges"/>.</summary>
+    public EventDefinitionBase? LogNonAtomicSaveChanges;
 }

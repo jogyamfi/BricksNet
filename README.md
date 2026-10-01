@@ -113,19 +113,28 @@ foreach (var row in rows)
 ## Entity Framework Core (preview)
 
 `BricksNet.EntityFrameworkCore` is an EF Core 10 provider built on the ADO.NET layer. It is under
-active development (see [docs/EFCORE_PLAN.md](docs/EFCORE_PLAN.md)). Today it supports raw SQL and
-basic LINQ queries. `SaveChanges`, migrations and `EnsureCreated` are not supported yet.
+active development (see [docs/EFCORE_PLAN.md](docs/EFCORE_PLAN.md)). It supports LINQ queries, raw
+SQL and `SaveChanges`. Migrations and `EnsureCreated` are not supported.
 
 ```csharp
 services.AddDbContext<SalesContext>(options => options.UseBricksNet(
-    "Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;Token=<pat>;Catalog=main;Schema=sales"));
+    "Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;Token=<pat>;Catalog=main;Schema=sales",
+    o => o.EnableRetryOnFailure()));
 
 var recent = await db.Orders.Where(o => o.Region == region).ToListAsync();
-var updated = await db.Database.ExecuteSqlAsync($"UPDATE orders SET status = {status} WHERE id = {id}");
+db.Orders.Add(new Order { Id = Guid.CreateVersion7(), Region = region });
+await db.SaveChangesAsync();
 ```
 
-Databricks has no multi-statement transactions, so `BeginTransaction` and `TransactionScope` throw
-instead of silently doing nothing.
+Things that differ from SQL Server:
+
+- **No multi-statement transactions.** `BeginTransaction` and `TransactionScope` throw. A
+  `SaveChanges` that runs several statements is not atomic: if one fails, earlier ones stay committed
+  (and are marked as saved).
+- **No database-generated values.** Keys and defaults must be set in .NET. Integer keys are not
+  auto-generated, and `Guid` keys get version-7 values.
+- **Optimistic concurrency** works with properties you maintain yourself (`IsConcurrencyToken`), using
+  the affected-row count Databricks reports.
 
 ---
 

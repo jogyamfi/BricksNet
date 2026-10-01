@@ -28,4 +28,19 @@ public class BricksNetDbContextOptionsBuilder
     /// <returns>The same builder instance so that calls can be chained.</returns>
     public virtual BricksNetDbContextOptionsBuilder KeepSessionAlive(bool keepSessionAlive = true) =>
         WithOption(extension => extension.WithKeepSessionAlive(keepSessionAlive));
+
+    /// <summary>
+    /// Retries operations that fail transiently: throttling or unavailability (HTTP 429/503) and Delta
+    /// concurrent-transaction conflicts. Queries are retried as a whole; <c>SaveChanges</c>
+    /// retries only the failed statement, because earlier statements have already committed.
+    /// </summary>
+    /// <param name="maxRetryCount">The maximum number of retries. Defaults to 6.</param>
+    /// <param name="maxRetryDelay">The longest delay between retries. Defaults to 30 seconds.</param>
+    /// <returns>The same builder instance so that calls can be chained.</returns>
+    public virtual BricksNetDbContextOptionsBuilder EnableRetryOnFailure(int maxRetryCount = 6, TimeSpan? maxRetryDelay = null)
+    {
+        var delay = maxRetryDelay ?? TimeSpan.FromSeconds(30);
+        WithOption(extension => extension.WithRetryOnFailure(maxRetryCount, delay));
+        return ExecutionStrategy(dependencies => new BricksNetRetryingExecutionStrategy(dependencies, maxRetryCount, delay));
+    }
 }

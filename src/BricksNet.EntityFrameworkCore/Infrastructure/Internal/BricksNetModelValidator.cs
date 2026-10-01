@@ -1,10 +1,10 @@
+using BricksNet.EntityFrameworkCore.Diagnostics.Internal;
 using BricksNet.EntityFrameworkCore.Metadata.Conventions;
 using BricksNet.EntityFrameworkCore.Storage.Internal.Mapping;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.Extensions.Logging;
 
 namespace BricksNet.EntityFrameworkCore.Infrastructure.Internal;
 
@@ -21,12 +21,6 @@ namespace BricksNet.EntityFrameworkCore.Infrastructure.Internal;
 /// </remarks>
 public class BricksNetModelValidator : RelationalModelValidator
 {
-    private static readonly Action<ILogger, string, string, Exception?> UniqueIndexNotEnforced =
-        LoggerMessage.Define<string, string>(
-            LogLevel.Warning,
-            new EventId(300_000, "BricksNet.UniqueIndexNotEnforced"),
-            "The unique index on {EntityType} ({Properties}) is not enforced by Databricks; duplicate values can be inserted.");
-
     /// <summary>Initialises a new instance.</summary>
     public BricksNetModelValidator(
         ModelValidatorDependencies dependencies,
@@ -147,11 +141,7 @@ public class BricksNetModelValidator : RelationalModelValidator
     {
         foreach (var index in entityType.GetDeclaredIndexes().Where(i => i.IsUnique))
         {
-            UniqueIndexNotEnforced(
-                logger.Logger,
-                entityType.DisplayName(),
-                string.Join(", ", index.Properties.Select(p => p.Name)),
-                null);
+            logger.UniqueIndexNotEnforced(entityType.DisplayName(), string.Join(", ", index.Properties.Select(p => p.Name)));
         }
     }
 

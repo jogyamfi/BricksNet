@@ -23,6 +23,8 @@ public class BricksNetOptionsExtension : RelationalOptionsExtension
     private BricksNetClientOptions? _clientOptions;
     private string? _accessToken;
     private bool? _keepSessionAlive;
+    private int _maxRetryCount;
+    private TimeSpan _maxRetryDelay;
 
     /// <summary>Initialises an empty extension.</summary>
     public BricksNetOptionsExtension()
@@ -36,6 +38,8 @@ public class BricksNetOptionsExtension : RelationalOptionsExtension
         _clientOptions = copyFrom._clientOptions;
         _accessToken = copyFrom._accessToken;
         _keepSessionAlive = copyFrom._keepSessionAlive;
+        _maxRetryCount = copyFrom._maxRetryCount;
+        _maxRetryDelay = copyFrom._maxRetryDelay;
     }
 
     /// <inheritdoc />
@@ -56,6 +60,15 @@ public class BricksNetOptionsExtension : RelationalOptionsExtension
     /// <c>KeepSessionAlive</c> itself.
     /// </summary>
     public virtual bool? KeepSessionAlive => _keepSessionAlive;
+
+    /// <summary>
+    /// How many times a <c>SaveChanges</c> statement that failed transiently is retried; <c>0</c>
+    /// (the default) disables retries. Set by <c>EnableRetryOnFailure</c>.
+    /// </summary>
+    public virtual int MaxRetryCount => _maxRetryCount;
+
+    /// <summary>The longest delay between <c>SaveChanges</c> statement retries.</summary>
+    public virtual TimeSpan MaxRetryDelay => _maxRetryDelay;
 
     /// <summary>
     /// Returns a copy configured to connect with <paramref name="clientOptions"/>, replacing any
@@ -88,6 +101,18 @@ public class BricksNetOptionsExtension : RelationalOptionsExtension
     {
         var clone = (BricksNetOptionsExtension)Clone();
         clone._keepSessionAlive = keepSessionAlive;
+        return clone;
+    }
+
+    /// <summary>Returns a copy that retries transiently failed <c>SaveChanges</c> statements.</summary>
+    public virtual BricksNetOptionsExtension WithRetryOnFailure(int maxRetryCount, TimeSpan maxRetryDelay)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRetryCount);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxRetryDelay, TimeSpan.Zero);
+
+        var clone = (BricksNetOptionsExtension)Clone();
+        clone._maxRetryCount = maxRetryCount;
+        clone._maxRetryDelay = maxRetryDelay;
         return clone;
     }
 
@@ -124,6 +149,11 @@ public class BricksNetOptionsExtension : RelationalOptionsExtension
                     if (Extension._keepSessionAlive is { } keepSessionAlive)
                     {
                         builder.Append(CultureInfo.InvariantCulture, $"KeepSessionAlive={keepSessionAlive} ");
+                    }
+
+                    if (Extension._maxRetryCount > 0)
+                    {
+                        builder.Append(CultureInfo.InvariantCulture, $"MaxRetryCount={Extension._maxRetryCount} ");
                     }
 
                     if (Extension._clientOptions is not null)

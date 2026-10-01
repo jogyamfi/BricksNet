@@ -3,8 +3,8 @@ using Microsoft.EntityFrameworkCore.Update;
 namespace BricksNet.EntityFrameworkCore.Update.Internal;
 
 /// <summary>
-/// Creates <c>SaveChanges</c> command batches. Saving changes is not supported yet; queries and raw
-/// SQL (<c>ExecuteSql</c>) work.
+/// Creates <c>SaveChanges</c> command batches of one statement each: the SQL Statement Execution
+/// API runs a single statement per request.
 /// </summary>
 /// <remarks>
 /// This is an internal API that supports the EF Core infrastructure and is not subject to the
@@ -12,11 +12,14 @@ namespace BricksNet.EntityFrameworkCore.Update.Internal;
 /// </remarks>
 public class BricksNetModificationCommandBatchFactory : IModificationCommandBatchFactory
 {
-    internal const string NotSupportedMessage =
-        "SaveChanges is not yet supported by the BricksNet EF Core provider. Use ExecuteSql/ExecuteSqlAsync "
-        + "to run INSERT, UPDATE, DELETE or MERGE statements.";
+    private readonly ModificationCommandBatchFactoryDependencies _dependencies;
 
-    /// <summary>Always throws: saving changes is not supported yet.</summary>
-    /// <exception cref="NotSupportedException">Always.</exception>
-    public virtual ModificationCommandBatch Create() => throw new NotSupportedException(NotSupportedMessage);
+    /// <summary>Initialises a new instance.</summary>
+    public BricksNetModificationCommandBatchFactory(ModificationCommandBatchFactoryDependencies dependencies)
+    {
+        _dependencies = dependencies;
+    }
+
+    /// <inheritdoc />
+    public virtual ModificationCommandBatch Create() => new SingularModificationCommandBatch(_dependencies);
 }

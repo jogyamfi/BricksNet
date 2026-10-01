@@ -484,6 +484,18 @@ Correct INSERT/UPDATE/DELETE through `SaveChanges`, with optimistic concurrency 
 - Fake-client tests for rows affected → concurrency exception.
 - Live E2E: CRUD round trip; a concurrency conflict between two contexts; a forced Delta conflict (two parallel updates on the same table), retried successfully.
 
+### Status (implemented)
+- **DML:** `BricksNetUpdateSqlGenerator` writes catalog-qualified `INSERT`/`UPDATE`/`DELETE`. Every command is mapped as `LastInResultSet | ResultSetWithRowsAffectedOnly`, so EF reads `num_affected_rows` from Databricks' DML summary and raises `DbUpdateConcurrencyException` on a mismatch.
+- **One statement per batch** (`SingularModificationCommandBatch`).
+- **Non-atomic saves:**
+  - `BricksNetEventId.NonAtomicSaveChanges` is a real EF event, so `ConfigureWarnings` can ignore or throw on it. It is logged once per save that runs more than one statement.
+  - On failure, the entities of statements that already committed are accepted (marked saved), so calling `SaveChanges` again does not repeat them. The unique-index warning moved onto the same event mechanism (`BricksNetEventId.UniqueIndexNotEnforced`).
+- **Retries:**
+  - `EnableRetryOnFailure(maxRetryCount, maxRetryDelay)` retries queries through `BricksNetRetryingExecutionStrategy`, and failed `SaveChanges` statements individually inside the batch executor.
+  - **Finding:** EF's `ExecutionStrategy` unwraps `DbUpdateException` before calling `ShouldRetryOn`, so type checks cannot exclude `SaveChanges`. The executor instead marks escaping exceptions with an exception `Data` key that the detector honours.
+  - **Finding:** EF does not run `ExecuteSql` through the execution strategy. Retrying raw SQL means wrapping it in `Database.CreateExecutionStrategy().ExecuteAsync(...)` (documented).
+- Live E2E items remain for Phase 8.
+
 ---
 
 ## Phase 7 — Bulk operations, batching & performance

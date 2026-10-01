@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connection string, an existing `BricksNetConnection` or `BricksNetClientOptions`. Raw SQL
   (`ExecuteSql`, `SqlQuery`, `FromSql`) and basic LINQ queries work, using backtick identifiers, `:name`
   parameters and Databricks string-literal escaping. Sessions are kept alive across EF's connection
-  open/close by default. Transactions, migrations, `EnsureCreated` and `SaveChanges` throw
+  open/close by default. Transactions, migrations and `EnsureCreated` throw
   `NotSupportedException`.
   - Type mapping covers every scalar CLR type. It uses Databricks typed literals (`5Y`, `5S`, `5L`,
     `1.5F`, `1.5D`, `1.5BD`, `DATE'…'`, `TIMESTAMP_NTZ'…'`, `TIMESTAMP'…'`, `X'…'`). Unsigned types
@@ -83,6 +83,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Unique indexes log a warning, because Databricks does not enforce them.
   - Unity Catalog three-part names: `modelBuilder.HasDefaultCatalog("main")` and
     `entity.HasCatalog(...)` generate `catalog.schema.table`.
+  - `SaveChanges`:
+    - `INSERT`/`UPDATE`/`DELETE` run one statement each. Optimistic concurrency uses the affected-row
+      count from Databricks' `num_affected_rows` summary.
+    - A save of several statements is not atomic. It logs `BricksNetEventId.NonAtomicSaveChanges`, and
+      on failure the entities of statements that already committed are marked as saved.
+    - `EnableRetryOnFailure()` retries queries, and `SaveChanges` statements individually, on throttling,
+      unavailability and Delta concurrent-write conflicts.
 
 ### Changed
 - **Breaking:** `TIMESTAMP_NTZ` values are returned as `DateTime` (`Kind = Unspecified`) instead of

@@ -62,17 +62,4 @@ public sealed class UnsupportedOperationTests
 
         Assert.Throws<NotSupportedException>(() => context.Database.EnsureCreated());
     }
-
-    [Fact]
-    public async Task SaveChanges_Throws_WithoutSendingAnything()
-    {
-        var databricks = new FakeDatabricks();
-        await using var context = BloggingContext.Create(databricks);
-        context.Blogs.Add(new Blog { Id = 1, Name = "alpha" });
-
-        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => context.SaveChangesAsync());
-
-        Assert.Contains("SaveChanges is not yet supported", ex.Message, StringComparison.Ordinal);
-        Assert.Empty(databricks.Statements);
-    }
 }
