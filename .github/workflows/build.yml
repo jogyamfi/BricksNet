@@ -46,7 +46,9 @@ jobs:
 
       - name: Pack (main branch only)
         if: github.ref == 'refs/heads/main'
-        run: dotnet pack src/BricksNet -c Release --no-build -o ./nupkgs
+        run: |
+          dotnet pack src/BricksNet -c Release --no-build -o ./nupkgs
+          dotnet pack src/BricksNet.EntityFrameworkCore -c Release --no-build -o ./nupkgs
 
       - name: Upload NuGet artifacts
         if: github.ref == 'refs/heads/main'

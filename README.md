@@ -3,12 +3,13 @@
 [![NuGet](https://img.shields.io/nuget/v/BricksNet.svg)](https://www.nuget.org/packages/BricksNet)
 [![Build](https://github.com/your-org/bricksnet/actions/workflows/build.yml/badge.svg)](https://github.com/your-org/bricksnet/actions/workflows/build.yml)
 -->
-**BricksNet** is a .NET 10 Databricks SQL client library providing two complementary surfaces:
+**BricksNet** is a .NET 10 Databricks SQL client library providing three complementary surfaces:
 
 - **Fluent async API** — `BricksNetClient → BricksNetSession → BricksNetOperation`
-- **ADO.NET provider** — `BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`; compatible with Dapper and EF Core (read)
+- **ADO.NET provider** — `BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`; compatible with Dapper
+- **EF Core provider** (preview) — `BricksNet.EntityFrameworkCore`: LINQ, `SaveChanges` and bulk operations over Delta tables ([guide](docs/EFCORE.md))
 
-Both surfaces target SQL Warehouses (REST backend) and All-purpose clusters (Thrift backend).
+All surfaces target SQL Warehouses (REST backend) and All-purpose clusters (Thrift backend).
 
 ---
 
@@ -112,9 +113,15 @@ foreach (var row in rows)
 
 ## Entity Framework Core (preview)
 
-`BricksNet.EntityFrameworkCore` is an EF Core 10 provider built on the ADO.NET layer. It is under
-active development (see [docs/EFCORE_PLAN.md](docs/EFCORE_PLAN.md)). It supports LINQ queries, raw
-SQL and `SaveChanges`. `EnsureCreated`/`EnsureDeleted` create and drop Delta tables for development and tests; migrations are not supported.
+`BricksNet.EntityFrameworkCore` is an EF Core 10 provider built on the ADO.NET layer. It supports LINQ
+queries, raw SQL, `SaveChanges`, `ExecuteUpdate`/`ExecuteDelete`, and `EnsureCreated`/`EnsureDeleted`
+for development. Migrations are not supported. See the **[EF Core provider guide](docs/EFCORE.md)**
+for configuration, type mapping, translations and limitations. The design and roadmap are in
+[docs/EFCORE_PLAN.md](docs/EFCORE_PLAN.md).
+
+```shell
+dotnet add package BricksNet.EntityFrameworkCore --prerelease
+```
 
 ```csharp
 services.AddDbContext<SalesContext>(options => options.UseBricksNet(
@@ -135,6 +142,8 @@ Things that differ from SQL Server:
   auto-generated, and `Guid` keys get version-7 values.
 - **Optimistic concurrency** works with properties you maintain yourself (`IsConcurrencyToken`), using
   the affected-row count Databricks reports.
+
+Try it with the sample app: `dotnet run --project samples/BricksNet.Samples -- EfCore`.
 
 ---
 

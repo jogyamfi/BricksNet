@@ -18,7 +18,8 @@
     <PackageVersion Include="K4os.Compression.LZ4.Streams" Version="1.3.8" />
 
     <!-- EF Core provider (BricksNet.EntityFrameworkCore) -->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <!-- Upper bound: the provider builds on EF "internal" APIs, which can change in a major release. -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="[10.0.12, 11.0.0)" />
 
     <!-- Samples console app -->
     <PackageVersion Include="Dapper" Version="2.1.35" />

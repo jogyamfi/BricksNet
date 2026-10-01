@@ -98,6 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `EnsureDeleted` drops only the model's tables.
   - A live functional test suite (`BricksNet.EntityFrameworkCore.FunctionalTests`). It runs against a
     real warehouse when the `BRICKSNET_EF_*` variables are set, and is skipped otherwise.
+  - EF Core provider guide (`docs/EFCORE.md`), an `EfCore` demo in the samples app, and packaging. The
+    package depends on EF Core Relational `[10.0.12, 11.0.0)`; CI packs it alongside `BricksNet`.
   - `ExecuteDelete` and `ExecuteUpdate`, returning the affected-row count. Updates that need other tables
     use `WHERE EXISTS (…)`, because Databricks has no `UPDATE … FROM`. Updates that take values from
     another table throw with guidance to use `MERGE`.

@@ -608,6 +608,13 @@ The token needs `USE CATALOG` and `CREATE SCHEMA` on the catalog. Benchmarks pri
    - The dependency-check suppressions are reviewed for new EF transitive dependencies.
 6. CHANGELOG entries for the core changes (Phase 0) and the new package.
 
+### Status (implemented)
+- **Docs:** `docs/EFCORE.md` is the user guide. The README links it and lists the EF provider as a third surface.
+- **Sample:** `samples/BricksNet.Samples` has an `EfCore` demo, which needs the new `Databricks:Catalog` setting. It creates and drops `bricksnet_efcore_demo` tables.
+- **Packaging:** the nuspec depends on `BricksNet 0.1.0-alpha` and `Microsoft.EntityFrameworkCore.Relational [10.0.12, 11.0.0)`. The range is set in `Directory.Packages.props`, because the provider uses EF internal APIs.
+- **CI:** the pack step produces both packages. `dotnet list package --vulnerable` reports no vulnerable packages for any project.
+- **Not verified:** the OWASP Dependency-Check job now scans the EF provider too. It needs Java and the NVD database, so it was not run locally; its first CI run may need suppressions reviewed.
+
 ---
 
 ## Risks & mitigations
