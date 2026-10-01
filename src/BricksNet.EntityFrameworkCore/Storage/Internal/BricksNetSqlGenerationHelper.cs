@@ -26,6 +26,12 @@ public class BricksNetSqlGenerationHelper : RelationalSqlGenerationHelper
     /// </summary>
     public override string StatementTerminator => string.Empty;
 
+    /// <summary>
+    /// <c>;</c>: separates the statements of a generated script (<c>GenerateCreateScript</c>), so it
+    /// can run as one Databricks SQL script. Commands sent by EF are never batched.
+    /// </summary>
+    public override string BatchTerminator => ";";
+
     /// <inheritdoc />
     public override string EscapeIdentifier(string identifier) =>
         identifier.Replace("`", "``", StringComparison.Ordinal);

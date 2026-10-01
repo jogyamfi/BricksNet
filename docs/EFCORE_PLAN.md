@@ -559,6 +559,34 @@ Broad behavioural confidence using EF Core's own specification tests, run live a
 ### Exit criteria
 The curated suites pass or have documented, asserted limitations. A results summary is committed to `docs/EFCORE.md`.
 
+### Status (implemented; live run pending)
+- **Step 1 (DDL):** `EnsureCreated` emits `CREATE SCHEMA IF NOT EXISTS` and `CREATE TABLE … USING DELTA`, keeping `NOT NULL` and comments.
+  - There are no PK/FK/unique/check constraints, because they are informational and Unity Catalog-only. Indexes are skipped.
+  - Statements run without a transaction, and the generated script separates them with `;`.
+  - `CanConnect` is `SELECT 1`. `HasTables` uses `SHOW SCHEMAS`/`SHOW TABLES`.
+  - **Changed from the plan:** `EnsureDeleted` drops only the model's tables, never schemas, so it cannot remove tables EF does not own. Migrations remain unsupported.
+- **Step 2 — changed from the plan:** the live suite is a purpose-built `tests/BricksNet.EntityFrameworkCore.FunctionalTests` project, not EF's specification tests. Those need provider-specific test stores, fixtures and many overrides, and wiring them up without a workspace to iterate against would produce unverified scaffolding. They can be added once live runs are routine. The suite covers:
+  - every item of the live verification checklist (Phases 2–7);
+  - ~55 translations, each evaluated by Databricks inside a `WHERE` and compared with .NET;
+  - query shapes compared with LINQ-to-Objects over the same seed data;
+  - a round trip of every mapped type with edge values;
+  - CRUD, a concurrency conflict between two contexts, 300-row multi-row inserts, and `ExecuteUpdate`/`ExecuteDelete` with joins;
+  - parallel writers with `EnableRetryOnFailure`;
+  - benchmarks (insert throughput with and without combining; session reuse).
+- **Isolation:** each run creates a schema named `efct_<timestamp>_<id>` in the configured catalog and drops it (`CASCADE`) at the end. Tests are `Category=E2E` and skip themselves without configuration.
+- **Steps 3–4** (hardening loop, both backends) and the `docs/EFCORE.md` results summary need a live run.
+
+### Running the live suite
+```powershell
+$env:BRICKSNET_EF_HOST     = "adb-<workspace-id>.azuredatabricks.net"
+$env:BRICKSNET_EF_HTTPPATH = "/sql/1.0/warehouses/<warehouse-id>"
+$env:BRICKSNET_EF_TOKEN    = "<personal access token>"
+$env:BRICKSNET_EF_CATALOG  = "<catalog where a temporary schema may be created>"
+# Optional, for an all-purpose cluster: $env:BRICKSNET_EF_USETHRIFT = "true"
+dotnet test tests/BricksNet.EntityFrameworkCore.FunctionalTests --logger "console;verbosity=detailed"
+```
+The token needs `USE CATALOG` and `CREATE SCHEMA` on the catalog. Benchmarks print timings and can be run alone with `--filter Category=Benchmark`.
+
 ---
 
 ## Phase 9 — Docs, samples, packaging & CI

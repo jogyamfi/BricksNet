@@ -114,7 +114,7 @@ foreach (var row in rows)
 
 `BricksNet.EntityFrameworkCore` is an EF Core 10 provider built on the ADO.NET layer. It is under
 active development (see [docs/EFCORE_PLAN.md](docs/EFCORE_PLAN.md)). It supports LINQ queries, raw
-SQL and `SaveChanges`. Migrations and `EnsureCreated` are not supported.
+SQL and `SaveChanges`. `EnsureCreated`/`EnsureDeleted` create and drop Delta tables for development and tests; migrations are not supported.
 
 ```csharp
 services.AddDbContext<SalesContext>(options => options.UseBricksNet(

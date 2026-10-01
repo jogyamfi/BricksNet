@@ -54,12 +54,4 @@ public sealed class UnsupportedOperationTests
 
         Assert.Contains("Migrations are not supported", ex.Message, StringComparison.Ordinal);
     }
-
-    [Fact]
-    public void EnsureCreated_Throws()
-    {
-        using var context = BloggingContext.Create(new FakeDatabricks());
-
-        Assert.Throws<NotSupportedException>(() => context.Database.EnsureCreated());
-    }
 }

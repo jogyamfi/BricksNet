@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connection string, an existing `BricksNetConnection` or `BricksNetClientOptions`. Raw SQL
   (`ExecuteSql`, `SqlQuery`, `FromSql`) and basic LINQ queries work, using backtick identifiers, `:name`
   parameters and Databricks string-literal escaping. Sessions are kept alive across EF's connection
-  open/close by default. Transactions, migrations and `EnsureCreated` throw
+  open/close by default. Transactions and migrations throw
   `NotSupportedException`.
   - Type mapping covers every scalar CLR type. It uses Databricks typed literals (`5Y`, `5S`, `5L`,
     `1.5F`, `1.5D`, `1.5BD`, `DATE'…'`, `TIMESTAMP_NTZ'…'`, `TIMESTAMP'…'`, `X'…'`). Unsigned types
@@ -93,6 +93,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Consecutive inserts into the same table become one multi-row `INSERT … VALUES (…), (…)`. This is
       capped by `MaxBatchSize` (default 1000 rows; `MaxBatchSize(1)` disables it) and by 256 parameters
       per statement.
+  - `EnsureCreated`, `EnsureDeleted`, `CanConnect` and `GenerateCreateScript` for development and
+    tests. Tables are created with `CREATE TABLE … USING DELTA`, without constraints or indexes.
+    `EnsureDeleted` drops only the model's tables.
+  - A live functional test suite (`BricksNet.EntityFrameworkCore.FunctionalTests`). It runs against a
+    real warehouse when the `BRICKSNET_EF_*` variables are set, and is skipped otherwise.
   - `ExecuteDelete` and `ExecuteUpdate`, returning the affected-row count. Updates that need other tables
     use `WHERE EXISTS (…)`, because Databricks has no `UPDATE … FROM`. Updates that take values from
     another table throw with guidance to use `MERGE`.
