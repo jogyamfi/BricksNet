@@ -46,6 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parameters and Databricks string-literal escaping. Sessions are kept alive across EF's connection
   open/close by default. Transactions, migrations, `EnsureCreated` and `SaveChanges` throw
   `NotSupportedException`.
+  - Type mapping covers every scalar CLR type. It uses Databricks typed literals (`5Y`, `5S`, `5L`,
+    `1.5F`, `1.5D`, `1.5BD`, `DATE'…'`, `TIMESTAMP_NTZ'…'`, `TIMESTAMP'…'`, `X'…'`). Unsigned types
+    widen to the next signed type (`ulong` → `DECIMAL(20,0)`). `Guid`, `char`, `TimeOnly` and
+    `TimeSpan` are stored as `STRING`. `DateTime` maps to `TIMESTAMP_NTZ` and `DateTimeOffset` to
+    `TIMESTAMP` (UTC). `decimal` defaults to `DECIMAL(18,2)` and honours `HasPrecision`. Store-type
+    aliases and facets such as `INTEGER`, `LONG`, `VARCHAR(n)` and `DECIMAL(p,s)` are recognised.
+    Decimal query parameters keep their own precision instead of being rounded to the column's scale.
 
 ### Changed
 - **Breaking:** `TIMESTAMP_NTZ` values are returned as `DateTime` (`Kind = Unspecified`) instead of

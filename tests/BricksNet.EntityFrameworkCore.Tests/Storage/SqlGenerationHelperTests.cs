@@ -6,7 +6,7 @@ using Xunit;
 
 namespace BricksNet.EntityFrameworkCore.Storage;
 
-public sealed class SqlGenerationAndTypeMappingTests
+public sealed class SqlGenerationHelperTests
 {
     private static readonly BloggingContext Context = BloggingContext.Create(new FakeDatabricks());
 
@@ -47,42 +47,5 @@ public sealed class SqlGenerationAndTypeMappingTests
     {
         Assert.Equal(expected, BricksNetSqlGenerationHelper.GenerateStringLiteral(value));
         Assert.Equal(expected, Mappings.FindMapping(typeof(string))!.GenerateSqlLiteral(value));
-    }
-
-    [Theory]
-    [InlineData(typeof(bool), "BOOLEAN")]
-    [InlineData(typeof(sbyte), "TINYINT")]
-    [InlineData(typeof(byte), "SMALLINT")]
-    [InlineData(typeof(short), "SMALLINT")]
-    [InlineData(typeof(int), "INT")]
-    [InlineData(typeof(long), "BIGINT")]
-    [InlineData(typeof(float), "FLOAT")]
-    [InlineData(typeof(double), "DOUBLE")]
-    [InlineData(typeof(decimal), "DECIMAL(18,2)")]
-    [InlineData(typeof(string), "STRING")]
-    [InlineData(typeof(DateOnly), "DATE")]
-    [InlineData(typeof(DateTime), "TIMESTAMP_NTZ")]
-    [InlineData(typeof(DateTimeOffset), "TIMESTAMP")]
-    [InlineData(typeof(byte[]), "BINARY")]
-    [InlineData(typeof(Guid), "STRING")]
-    public void ClrTypes_MapToDatabricksTypes(Type clrType, string storeType) =>
-        Assert.Equal(storeType, Mappings.FindMapping(clrType)!.StoreType);
-
-    [Theory]
-    [InlineData("bigint", typeof(long))]
-    [InlineData("INTEGER", typeof(int))]
-    [InlineData("VARCHAR(50)", typeof(string))]
-    [InlineData("TIMESTAMP_LTZ", typeof(DateTimeOffset))]
-    [InlineData("boolean", typeof(bool))]
-    public void StoreTypes_MapToClrTypes(string storeType, Type clrType) =>
-        Assert.Equal(clrType, Mappings.FindMapping(storeType)!.ClrType);
-
-    [Fact]
-    public void BoolLiterals_AreNative()
-    {
-        var mapping = Mappings.FindMapping(typeof(bool))!;
-
-        Assert.Equal("true", mapping.GenerateSqlLiteral(true));
-        Assert.Equal("false", mapping.GenerateSqlLiteral(false));
     }
 }

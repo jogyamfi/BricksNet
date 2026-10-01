@@ -1,35 +1,48 @@
 using System.Data;
 using BricksNet.EntityFrameworkCore.Storage.Internal.Mapping;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace BricksNet.EntityFrameworkCore.Storage.Internal;
 
 /// <summary>
-/// Maps CLR types to Databricks SQL types and back. This is the baseline set of scalar mappings;
-/// facets such as <c>DECIMAL(p,s)</c> precision are refined by the full type-mapping layer.
+/// Maps CLR types to Databricks SQL types and back, including facets (<c>DECIMAL(p,s)</c>) and
+/// store-type aliases (<c>INTEGER</c>, <c>LONG</c>, <c>VARCHAR(n)</c>, ...).
 /// </summary>
 /// <remarks>
+/// <para>
+/// Databricks has no unsigned integers, so <see cref="byte"/>, <see cref="ushort"/>, <see cref="uint"/>
+/// and <see cref="ulong"/> map to the next wider signed type. <see cref="Guid"/>, <see cref="char"/>,
+/// <see cref="TimeOnly"/> and <see cref="TimeSpan"/> are stored as <c>STRING</c>.
+/// </para>
+/// <para>
 /// This is an internal API that supports the EF Core infrastructure and is not subject to the
 /// same compatibility standards as public APIs.
+/// </para>
 /// </remarks>
 public class BricksNetTypeMappingSource : RelationalTypeMappingSource
 {
     private static readonly BricksNetBoolTypeMapping Bool = new();
-    private static readonly SByteTypeMapping TinyInt = new("TINYINT", DbType.SByte);
-    // TINYINT is signed, so byte widens to SMALLINT.
-    private static readonly ByteTypeMapping ByteAsSmallInt = new("SMALLINT", DbType.Byte);
-    private static readonly ShortTypeMapping SmallInt = new("SMALLINT", DbType.Int16);
+    private static readonly BricksNetSByteTypeMapping TinyInt = new();
+    private static readonly BricksNetByteTypeMapping ByteAsSmallInt = new();
+    private static readonly BricksNetShortTypeMapping SmallInt = new();
+    private static readonly UShortTypeMapping UShortAsInt = new("INT", DbType.UInt16);
     private static readonly IntTypeMapping Int = new("INT", DbType.Int32);
-    private static readonly LongTypeMapping BigInt = new("BIGINT", DbType.Int64);
-    private static readonly FloatTypeMapping Float = new("FLOAT", DbType.Single);
-    private static readonly DoubleTypeMapping Double = new("DOUBLE", DbType.Double);
-    private static readonly DecimalTypeMapping Decimal = new("DECIMAL(18,2)", DbType.Decimal, precision: 18, scale: 2);
+    private static readonly BricksNetUIntTypeMapping UIntAsBigInt = new();
+    private static readonly BricksNetLongTypeMapping BigInt = new();
+    private static readonly BricksNetULongTypeMapping ULongAsDecimal = new();
+    private static readonly BricksNetFloatTypeMapping Float = new();
+    private static readonly BricksNetDoubleTypeMapping Double = new();
+    private static readonly BricksNetDecimalTypeMapping Decimal = new();
     private static readonly BricksNetStringTypeMapping String = new();
-    private static readonly DateOnlyTypeMapping Date = new("DATE", DbType.Date);
-    private static readonly DateTimeTypeMapping TimestampNtz = new("TIMESTAMP_NTZ", DbType.DateTime2);
-    private static readonly DateTimeOffsetTypeMapping Timestamp = new("TIMESTAMP", DbType.DateTimeOffset);
-    private static readonly ByteArrayTypeMapping Binary = new("BINARY", DbType.Binary);
+    private static readonly BricksNetDateOnlyTypeMapping Date = new();
+    private static readonly BricksNetDateTimeTypeMapping TimestampNtz = new();
+    private static readonly BricksNetDateTimeOffsetTypeMapping Timestamp = new();
+    private static readonly BricksNetByteArrayTypeMapping Binary = new();
     private static readonly GuidTypeMapping GuidAsString = new("STRING", DbType.Guid);
+    private static readonly RelationalTypeMapping CharAsString = (RelationalTypeMapping)String.WithComposedConverter(new CharToStringConverter());
+    private static readonly RelationalTypeMapping TimeOnlyAsString = (RelationalTypeMapping)String.WithComposedConverter(new TimeOnlyToStringConverter());
+    private static readonly RelationalTypeMapping TimeSpanAsString = (RelationalTypeMapping)String.WithComposedConverter(new TimeSpanToStringConverter());
 
     private static readonly Dictionary<Type, RelationalTypeMapping> ClrTypeMappings = new()
     {
@@ -37,19 +50,27 @@ public class BricksNetTypeMappingSource : RelationalTypeMappingSource
         [typeof(sbyte)] = TinyInt,
         [typeof(byte)] = ByteAsSmallInt,
         [typeof(short)] = SmallInt,
+        [typeof(ushort)] = UShortAsInt,
         [typeof(int)] = Int,
+        [typeof(uint)] = UIntAsBigInt,
         [typeof(long)] = BigInt,
+        [typeof(ulong)] = ULongAsDecimal,
         [typeof(float)] = Float,
         [typeof(double)] = Double,
         [typeof(decimal)] = Decimal,
         [typeof(string)] = String,
+        [typeof(char)] = CharAsString,
         [typeof(DateOnly)] = Date,
         [typeof(DateTime)] = TimestampNtz,
         [typeof(DateTimeOffset)] = Timestamp,
+        [typeof(TimeOnly)] = TimeOnlyAsString,
+        [typeof(TimeSpan)] = TimeSpanAsString,
         [typeof(byte[])] = Binary,
         [typeof(Guid)] = GuidAsString,
     };
 
+    // Keyed by the store type name without facets; facets such as DECIMAL(10,2) or VARCHAR(50)
+    // are applied from the mapping info.
     private static readonly Dictionary<string, RelationalTypeMapping> StoreTypeMappings = new(StringComparer.OrdinalIgnoreCase)
     {
         ["BOOLEAN"] = Bool,
@@ -91,6 +112,12 @@ public class BricksNetTypeMappingSource : RelationalTypeMappingSource
 
     private static RelationalTypeMapping? FindRawMapping(RelationalTypeMappingInfo mappingInfo)
     {
+        // Databricks rejects DECIMAL precision above 38; report no mapping rather than emit invalid DDL/casts.
+        if (mappingInfo.Precision > BricksNetDecimalTypeMapping.MaxPrecision)
+        {
+            return null;
+        }
+
         var clrType = mappingInfo.ClrType;
         var storeTypeNameBase = mappingInfo.StoreTypeNameBase;
 
