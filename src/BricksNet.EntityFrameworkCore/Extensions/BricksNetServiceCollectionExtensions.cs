@@ -2,12 +2,14 @@ using BricksNet.EntityFrameworkCore.Diagnostics.Internal;
 using BricksNet.EntityFrameworkCore.Infrastructure.Internal;
 using BricksNet.EntityFrameworkCore.Metadata.Conventions;
 using BricksNet.EntityFrameworkCore.Migrations.Internal;
+using BricksNet.EntityFrameworkCore.Query.Internal;
 using BricksNet.EntityFrameworkCore.Storage.Internal;
 using BricksNet.EntityFrameworkCore.Update.Internal;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update;
 
@@ -42,6 +44,8 @@ public static class BricksNetServiceCollectionExtensions
             .TryAdd<IHistoryRepository, BricksNetHistoryRepository>()
             .TryAdd<IMigrationsSqlGenerator, BricksNetMigrationsSqlGenerator>()
             .TryAdd<IMigrator, BricksNetMigrator>()
+            .TryAdd<IQuerySqlGeneratorFactory, BricksNetQuerySqlGeneratorFactory>()
+            .TryAdd<IRelationalParameterBasedSqlProcessorFactory, BricksNetParameterBasedSqlProcessorFactory>()
             .TryAdd<IUpdateSqlGenerator, BricksNetUpdateSqlGenerator>()
             .TryAdd<IBatchExecutor, BricksNetBatchExecutor>()
             .TryAdd<IModificationCommandBatchFactory, BricksNetModificationCommandBatchFactory>()

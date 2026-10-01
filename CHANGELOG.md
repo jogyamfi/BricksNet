@@ -53,6 +53,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `TIMESTAMP` (UTC). `decimal` defaults to `DECIMAL(18,2)` and honours `HasPrecision`. Store-type
     aliases and facets such as `INTEGER`, `LONG`, `VARCHAR(n)` and `DECIMAL(p,s)` are recognised.
     Decimal query parameters keep their own precision instead of being rounded to the column's scale.
+  - LINQ translation to Databricks SQL. Paging uses `LIMIT`/`OFFSET`, with `Take`/`Skip` values
+    inlined as literals. Integer division uses `DIV` (Databricks `/` always returns a fraction).
+    String concatenation uses `||`. `CROSS APPLY`/`OUTER APPLY` become `LATERAL` joins.
+    `Contains` on a list expands to `IN (:p1, :p2, …)`. Filtering, ordering, aggregates, `GroupBy`,
+    joins, `Include` (single and split query), correlated subqueries, per-group `Take`/`First` (via
+    `ROW_NUMBER()`) and set operations have SQL baseline tests.
 
 ### Changed
 - **Breaking:** `TIMESTAMP_NTZ` values are returned as `DateTime` (`Kind = Unspecified`) instead of

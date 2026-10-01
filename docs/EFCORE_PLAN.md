@@ -346,6 +346,21 @@ Translate the core LINQ operators correctly: `Where`, `Select`, `OrderBy`/`ThenB
 ### Exit criteria
 The baseline suite passes. The Blog E2E suite passes locally. The unsupported-shape list is documented.
 
+### Status (implemented)
+- Done: `LIMIT`/`OFFSET`, `DIV` integer division, `||` concatenation, `LATERAL` joins for APPLY, and SQL baselines for every operator listed in the goal.
+- **Changed from the plan:** `Take`/`Skip` values are always inlined as literals (`BricksNetParameterBasedSqlProcessor`) instead of being sent as parameters. Paging then works whether or not a runtime accepts parameter markers in `LIMIT`. The cost is that EF regenerates SQL per execution for paged queries.
+- **Deferred to Phase 8:** step 4 (unsupported-shape detection) and the `<=>` optimisation. Rejecting shapes without live evidence would block queries that newer runtimes accept, so the rules will come from the live checklist below.
+
+### Live verification checklist (run in Phase 8)
+| Shape | Generated SQL | Risk |
+|---|---|---|
+| `Any()`/`All()` as a scalar | `SELECT EXISTS (SELECT 1 …)` | EXISTS in a projection needs a recent runtime |
+| `FirstOrDefault()` inside `Select` | correlated scalar subquery with `ORDER BY … LIMIT 1` | correlated subqueries with `LIMIT` may be rejected ("must be aggregated") |
+| `Skip(n).FirstOrDefault()` inside `Select` | correlated subquery with `LIMIT 1 OFFSET n` | as above |
+| non-equality correlated `SelectMany(...Take(n))` | `CROSS JOIN LATERAL` / `LEFT JOIN LATERAL … ON TRUE` | LATERAL with correlated `LIMIT` support varies by runtime |
+| `Skip` without `Take` | `OFFSET n` with no `LIMIT` | confirm standalone `OFFSET` is accepted |
+| Typed literals (Phase 2) | `TIMESTAMP_NTZ'…'`, `1.5BD`, `X'…'`, `5Y` | confirm on SQL warehouse and cluster |
+
 ---
 
 ## Phase 4 — Function & member translators
