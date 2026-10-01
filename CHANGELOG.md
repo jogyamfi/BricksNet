@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the session for the next `Open()` to reuse; `Dispose()` releases it.
 - `BricksNetConnection` constructors that take a client factory, as a parallel-safe alternative to the
   static `ClientFactory`.
+- `BricksNet.EntityFrameworkCore` (preview): an EF Core 10 provider. `UseBricksNet(...)` accepts a
+  connection string, an existing `BricksNetConnection` or `BricksNetClientOptions`. Raw SQL
+  (`ExecuteSql`, `SqlQuery`, `FromSql`) and basic LINQ queries work, using backtick identifiers, `:name`
+  parameters and Databricks string-literal escaping. Sessions are kept alive across EF's connection
+  open/close by default. Transactions, migrations, `EnsureCreated` and `SaveChanges` throw
+  `NotSupportedException`.
 
 ### Changed
 - **Breaking:** `TIMESTAMP_NTZ` values are returned as `DateTime` (`Kind = Unspecified`) instead of

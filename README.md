@@ -110,6 +110,25 @@ foreach (var row in rows)
 
 ---
 
+## Entity Framework Core (preview)
+
+`BricksNet.EntityFrameworkCore` is an EF Core 10 provider built on the ADO.NET layer. It is under
+active development (see [docs/EFCORE_PLAN.md](docs/EFCORE_PLAN.md)). Today it supports raw SQL and
+basic LINQ queries. `SaveChanges`, migrations and `EnsureCreated` are not supported yet.
+
+```csharp
+services.AddDbContext<SalesContext>(options => options.UseBricksNet(
+    "Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;Token=<pat>;Catalog=main;Schema=sales"));
+
+var recent = await db.Orders.Where(o => o.Region == region).ToListAsync();
+var updated = await db.Database.ExecuteSqlAsync($"UPDATE orders SET status = {status} WHERE id = {id}");
+```
+
+Databricks has no multi-statement transactions, so `BeginTransaction` and `TransactionScope` throw
+instead of silently doing nothing.
+
+---
+
 ## Dependency Injection
 
 ```csharp
