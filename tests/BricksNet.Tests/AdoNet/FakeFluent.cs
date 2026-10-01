@@ -46,11 +46,17 @@ internal static class FakeFluent
 
         public FakeOperation? LastOperation { get; private set; }
 
+        public string? LastSql { get; private set; }
+
+        public StatementOptions? LastOptions { get; private set; }
+
         public Task<IBricksNetOperation> ExecuteStatementAsync(
             string sql,
             StatementOptions? options = null,
             CancellationToken cancellationToken = default)
         {
+            LastSql = sql;
+            LastOptions = options;
             LastOperation = new FakeOperation(rows) { WaitFailure = WaitFailure, Schema = Schema };
             return Task.FromResult<IBricksNetOperation>(LastOperation);
         }

@@ -135,6 +135,32 @@ public class JsonResultHandlerTests
     }
 
     [Fact]
+    public async Task TypeCoercion_Timestamp_IsDateTimeOffset()
+    {
+        var json = Utf8("[[\"2024-03-15T10:30:00.000Z\"]]");
+        var handler = new JsonResultHandler(json, new[] { Col(0, "ts", "TIMESTAMP") });
+        var rows = await handler.FetchNextChunkAsync();
+
+        Assert.Equal(
+            new DateTimeOffset(2024, 3, 15, 10, 30, 0, TimeSpan.Zero),
+            Assert.IsType<DateTimeOffset>(rows[0]["ts"]));
+    }
+
+    [Theory]
+    [InlineData("2024-03-15T10:30:00.000")]
+    [InlineData("2024-03-15 10:30:00")]
+    public async Task TypeCoercion_TimestampNtz_IsWallClockDateTime(string text)
+    {
+        var json = Utf8("[[\"" + text + "\"]]");
+        var handler = new JsonResultHandler(json, new[] { Col(0, "ts", "TIMESTAMP_NTZ") });
+        var rows = await handler.FetchNextChunkAsync();
+
+        var value = Assert.IsType<DateTime>(rows[0]["ts"]);
+        Assert.Equal(new DateTime(2024, 3, 15, 10, 30, 0), value);
+        Assert.Equal(DateTimeKind.Unspecified, value.Kind);
+    }
+
+    [Fact]
     public async Task TypeCoercion_Binary_FromBase64()
     {
         var expected = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF };

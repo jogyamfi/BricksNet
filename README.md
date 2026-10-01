@@ -85,6 +85,13 @@ For OAuth:
 Host=...;HttpPath=...;ClientId=<id>;ClientSecret=<secret>
 ```
 
+Add `KeepSessionAlive=true` to keep the Databricks session open across `Close()`/`Open()` cycles
+(it is released on `Dispose()`), which avoids starting a new session each time the connection opens.
+
+`ExecuteNonQuery` returns the rows affected by `INSERT`/`UPDATE`/`DELETE`/`MERGE`. A failed statement
+throws `BricksNetException`. Its `ErrorClass` holds the Databricks error class, and `IsTransient`
+flags errors that are safe to retry, such as Delta concurrent-write conflicts.
+
 ### Example with Dapper
 
 ```csharp

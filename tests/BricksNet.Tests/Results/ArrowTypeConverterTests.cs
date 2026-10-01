@@ -160,6 +160,23 @@ public class ArrowTypeConverterTests
         Assert.Equal(expected.ToUnixTimeSeconds(), ((DateTimeOffset)result!).ToUnixTimeSeconds());
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void ConvertValue_TimestampWithoutTimezone_ReturnsWallClockDateTime(string? timezone)
+    {
+        // Spark writes TIMESTAMP_NTZ as an Arrow timestamp with no time zone.
+        var tsType = new TimestampType(TimeUnit.Microsecond, timezone!);
+        var array = new TimestampArray.Builder(tsType)
+            .Append(new DateTimeOffset(2024, 1, 15, 10, 30, 0, TimeSpan.Zero))
+            .Build();
+
+        var result = Assert.IsType<DateTime>(ArrowTypeConverter.ConvertValue(array, 0));
+
+        Assert.Equal(new DateTime(2024, 1, 15, 10, 30, 0), result);
+        Assert.Equal(DateTimeKind.Unspecified, result.Kind);
+    }
+
     // ---- String types ----
 
     [Fact]

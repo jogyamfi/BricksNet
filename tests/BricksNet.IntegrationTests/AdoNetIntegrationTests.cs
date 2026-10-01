@@ -87,4 +87,17 @@ public sealed class AdoNetIntegrationTests : IntegrationTestBase, IDisposable
         Assert.True(await reader.ReadAsync());
         Assert.True(reader.IsDBNull(nameOrdinal));
     }
+
+    [Fact]
+    public async Task ExecuteNonQuery_Dml_ReturnsAffectedRowsFromSummary()
+    {
+        LoadFixtures("adonet", "execute_dml");
+
+        await using var connection = NewConnection();
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO sample VALUES (4, 'delta', true), (5, 'epsilon', false)";
+
+        Assert.Equal(2, await command.ExecuteNonQueryAsync());
+    }
 }

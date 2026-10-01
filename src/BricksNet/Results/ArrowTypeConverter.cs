@@ -71,7 +71,7 @@ internal static class ArrowTypeConverter
             Decimal256Array a => ToDecimalOrString(a, index),
             Date32Array a => ToDateOnly(a.GetDateTimeOffset(index)),
             Date64Array a => ToDateOnly(a.GetDateTimeOffset(index)),
-            TimestampArray a => a.GetTimestamp(index),
+            TimestampArray a => ToTimestamp(a, index),
             StringArray a => a.GetString(index),
             LargeStringArray a => a.GetString(index),
             BinaryArray a => a.GetBytes(index).ToArray(),
@@ -110,6 +110,23 @@ internal static class ArrowTypeConverter
         {
             return array.GetString(index);
         }
+    }
+
+    /// <summary>
+    /// A zoned Arrow timestamp (Databricks <c>TIMESTAMP</c>) is an instant and becomes a
+    /// <see cref="DateTimeOffset"/>. One without a time zone (<c>TIMESTAMP_NTZ</c>) is a wall-clock
+    /// value and becomes a <see cref="DateTime"/> of <see cref="DateTimeKind.Unspecified"/> kind.
+    /// </summary>
+    private static object? ToTimestamp(TimestampArray array, int index)
+    {
+        // Boxed separately: a conditional would implicitly convert the DateTime back to DateTimeOffset.
+        var value = array.GetTimestamp(index);
+        if (string.IsNullOrEmpty(((TimestampType)array.Data.DataType).Timezone))
+        {
+            return value?.DateTime;
+        }
+
+        return value;
     }
 
     private static DateOnly? ToDateOnly(DateTimeOffset? value) =>

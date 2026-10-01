@@ -19,12 +19,19 @@ internal static class ParameterFormatter
         ArgumentNullException.ThrowIfNull(parameter);
 
         var value = parameter.Value is DBNull ? null : parameter.Value;
-        return (FormatValue(value), parameter.TypeHint ?? InferType(value));
+        var type = parameter.TypeHint ?? InferType(value);
+        return (FormatValue(value, type), type);
     }
 
-    private static string? FormatValue(object? value) => value switch
+    private static string? FormatValue(object? value, string? type) => value switch
     {
         null => null,
+        // Render date/time values in the shape of the declared type: DATE takes no time part and
+        // TIMESTAMP_NTZ is a wall-clock value, so neither carries an offset.
+        DateTime dt when IsType(type, "DATE") => dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        DateTimeOffset dto when IsType(type, "DATE") => dto.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        DateTime dt when IsType(type, "TIMESTAMP_NTZ") =>
+            dt.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture),
         string s => s,
         bool b => b ? "true" : "false",
         DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
@@ -44,9 +51,10 @@ internal static class ParameterFormatter
     {
         null => null,
         bool => "BOOLEAN",
-        sbyte or byte => "TINYINT",
-        short or ushort => "SMALLINT",
-        int => "INT",
+        sbyte => "TINYINT",
+        // TINYINT is signed, so byte values above 127 need SMALLINT.
+        byte or short => "SMALLINT",
+        ushort or int => "INT",
         uint or long => "BIGINT",
         ulong => "DECIMAL(20,0)",
         float => "FLOAT",
@@ -57,6 +65,8 @@ internal static class ParameterFormatter
         DateTime or DateTimeOffset => "TIMESTAMP",
         _ => "STRING",
     };
+
+    private static bool IsType(string? type, string name) => string.Equals(type, name, StringComparison.OrdinalIgnoreCase);
 
     // Precision must cover every digit of the value; the scale is the value's own scale.
     private static string DecimalType(decimal value)

@@ -29,6 +29,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `IBricksNetOperation.GetSchemaAsync` — server-reported column metadata.
 - OAuth: refresh-token grant renews expired access tokens without reopening the browser.
 - `OAuthOptions.RedirectHost` (default `localhost`).
+- `ExecuteNonQuery` returns the number of rows changed by `INSERT`/`UPDATE`/`DELETE`/`MERGE` (from
+  Databricks' `num_affected_rows` summary), and `BricksNetDataReader.RecordsAffected` reports it for
+  DML results. Other statements still return `-1`.
+- `BricksNetException.ErrorClass` (e.g. `DELTA_CONCURRENT_APPEND`), parsed from the server message, and
+  `IsTransient` (HTTP 429/503 and Delta concurrent-transaction conflicts) for retry policies.
+- `BricksNetConnection.GetServerVersionAsync`, `ServerVersion` and `SparkVersion`: the server's Apache
+  Spark version, queried once (`SELECT version()`) and cached.
+- `KeepSessionAlive` connection-string keyword / `BricksNetConnection.KeepSessionAlive`: `Close()` keeps
+  the session for the next `Open()` to reuse; `Dispose()` releases it.
+- `BricksNetConnection` constructors that take a client factory, as a parallel-safe alternative to the
+  static `ClientFactory`.
+
+### Changed
+- **Breaking:** `TIMESTAMP_NTZ` values are returned as `DateTime` (`Kind = Unspecified`) instead of
+  `DateTimeOffset`, matching their wall-clock meaning. `TIMESTAMP` is still `DateTimeOffset`.
+- **Breaking:** `BricksNetParameter.DbType` is inferred from `Value` until assigned (previously always
+  `String`). An explicitly assigned `DbType` is now sent as the parameter's SQL type, so `NULL`s are typed;
+  `TypeHint` still takes precedence. `Precision`/`Scale` are stored and used for `DECIMAL` parameters.
+- `BricksNetDataReader.GetFieldValue<T>` converts between date/time types, `Guid` (from strings or
+  bytes), enums, nullable targets and numeric widths, instead of failing in `Convert.ChangeType`.
+  Failures raise `InvalidCastException` naming the column and both types.
+- Parameter inference: `byte` is sent as `SMALLINT` and `ushort` as `INT`, since `TINYINT`/`SMALLINT`
+  are signed. A `DateTime` sent as `DATE` or `TIMESTAMP_NTZ` is formatted without a time part or
+  offset, respectively.
 
 ### Fixed
 - REST: results were silently truncated to `MaxRows` (default 10,000) because it was sent as `row_limit`.

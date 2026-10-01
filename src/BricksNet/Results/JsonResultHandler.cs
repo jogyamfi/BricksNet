@@ -102,8 +102,11 @@ public sealed class JsonResultHandler : IResultsProvider
             "DOUBLE" => double.Parse(text, CultureInfo.InvariantCulture),
             "DECIMAL" or "NUMERIC" => ParseDecimalOrString(text),
             "DATE" => DateOnly.Parse(text, CultureInfo.InvariantCulture),
-            "TIMESTAMP" or "TIMESTAMP_NTZ" => DateTimeOffset.Parse(
+            "TIMESTAMP" => DateTimeOffset.Parse(
                 text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal),
+            // A wall-clock value: keep the written date and time, with no time zone attached.
+            "TIMESTAMP_NTZ" => DateTimeOffset.Parse(
+                text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal).DateTime,
             "BINARY" => Convert.FromBase64String(text),
             _ => text,
         };
