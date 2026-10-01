@@ -73,6 +73,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       `byte[].Length` → `length`.
   - Databricks `EF.Functions` methods: `ILike`, and `DateDiffYear`/`Month`/`Day`/`Hour`/`Minute`/`Second`
     → `timestampdiff`.
+  - Model conventions and validation:
+    - Integer keys are no longer treated as database-generated. `Guid` keys get version 7
+      (time-ordered) values.
+    - Model building fails with guidance for configuration Databricks cannot honour: database-generated
+      values (`ValueGeneratedOnAdd` without a generator, `HasDefaultValue`/`HasDefaultValueSql`,
+      computed columns, `IsRowVersion`, `OwnsMany` shadow keys), sequences, and decimal precision above
+      38.
+    - Unique indexes log a warning, because Databricks does not enforce them.
+  - Unity Catalog three-part names: `modelBuilder.HasDefaultCatalog("main")` and
+    `entity.HasCatalog(...)` generate `catalog.schema.table`.
 
 ### Changed
 - **Breaking:** `TIMESTAMP_NTZ` values are returned as `DateTime` (`Kind = Unspecified`) instead of

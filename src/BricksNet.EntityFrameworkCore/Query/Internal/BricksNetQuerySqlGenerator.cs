@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using BricksNet.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 
@@ -83,6 +84,28 @@ public class BricksNetQuerySqlGenerator : QuerySqlGenerator
         }
 
         return sqlBinaryExpression;
+    }
+
+    /// <summary>
+    /// Generates <c>catalog.schema.table</c> for tables with a Unity Catalog catalog
+    /// (<c>HasDefaultCatalog</c>/<c>HasCatalog</c>), and EF's default name otherwise.
+    /// </summary>
+    protected override Expression VisitTable(TableExpression tableExpression)
+    {
+        ArgumentNullException.ThrowIfNull(tableExpression);
+
+        if (tableExpression.Table.FindAnnotation(BricksNetAnnotationNames.Catalog)?.Value is not string catalog)
+        {
+            return base.VisitTable(tableExpression);
+        }
+
+        var helper = Dependencies.SqlGenerationHelper;
+        Sql.Append(helper.DelimitIdentifier(catalog))
+            .Append(".")
+            .Append(helper.DelimitIdentifier(tableExpression.Name, tableExpression.Schema))
+            .Append(AliasSeparator)
+            .Append(helper.DelimitIdentifier(tableExpression.Alias));
+        return tableExpression;
     }
 
     /// <summary>Generates <c>CROSS APPLY</c> as a <c>CROSS JOIN LATERAL</c>.</summary>

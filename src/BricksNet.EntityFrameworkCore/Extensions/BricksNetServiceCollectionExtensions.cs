@@ -1,17 +1,21 @@
 using BricksNet.EntityFrameworkCore.Diagnostics.Internal;
 using BricksNet.EntityFrameworkCore.Infrastructure.Internal;
 using BricksNet.EntityFrameworkCore.Metadata.Conventions;
+using BricksNet.EntityFrameworkCore.Metadata.Internal;
 using BricksNet.EntityFrameworkCore.Migrations.Internal;
 using BricksNet.EntityFrameworkCore.Query.Internal;
 using BricksNet.EntityFrameworkCore.Storage.Internal;
 using BricksNet.EntityFrameworkCore.Update.Internal;
+using BricksNet.EntityFrameworkCore.ValueGeneration.Internal;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update;
+using Microsoft.EntityFrameworkCore.ValueGeneration;
 
 // Lives in the DI namespace, next to the other AddEntityFramework* provider registrations.
 namespace Microsoft.Extensions.DependencyInjection;
@@ -39,6 +43,9 @@ public static class BricksNetServiceCollectionExtensions
             .TryAdd<IRelationalTypeMappingSource, BricksNetTypeMappingSource>()
             .TryAdd<ISqlGenerationHelper, BricksNetSqlGenerationHelper>()
             .TryAdd<IProviderConventionSetBuilder, BricksNetConventionSetBuilder>()
+            .TryAdd<IRelationalAnnotationProvider, BricksNetAnnotationProvider>()
+            .TryAdd<IModelValidator, BricksNetModelValidator>()
+            .TryAdd<IValueGeneratorSelector, BricksNetValueGeneratorSelector>()
             .TryAdd<IRelationalConnection, BricksNetRelationalConnection>()
             .TryAdd<IRelationalDatabaseCreator, BricksNetDatabaseCreator>()
             .TryAdd<IHistoryRepository, BricksNetHistoryRepository>()

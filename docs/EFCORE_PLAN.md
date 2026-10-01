@@ -446,6 +446,17 @@ A model building experience that steers users into what Databricks supports and 
 - Model validation tests for each rule.
 - Convention tests: `int Id` is not store-generated, and `Guid Id` is client-generated.
 
+### Status (implemented)
+- Done: the value-generation convention, version-7 GUID keys (EF 10's default generator still produces v4), every validator rule, and catalogs (`HasDefaultCatalog`, `HasCatalog`, `GetCatalog`).
+- Catalogs work through a `BricksNet:Catalog` annotation on relational tables and views, which `VisitTable` reads.
+- **Additions beyond the plan:**
+  - **`HasDefaultValue` is rejected**, like `HasDefaultValueSql`. EF would expect to read the default back.
+  - **Hidden keys are rejected:** a primary key that is a shadow property, not a foreign key and not client-generated. This is the key EF adds to `OwnsMany` collections. Without the check, every owned item would get key `0`.
+  - **Decimal precision above 38** is reported before EF's generic "no mapping" error.
+  - **The unique-index warning** is a logged event (`BricksNet.UniqueIndexNotEnforced`, event id 300000).
+- **EF behaviour, not provider behaviour:** disposing a context after a model-validation failure throws `ObjectDisposedException` when the context *owns an existing* `DbConnection` (`UseBricksNet(connection, contextOwnsConnection: true)`). That hides the validation message. Connection-string configuration is unaffected.
+- Step 2 (default schema from the connection) needs no code: unqualified names already resolve against the session's schema.
+
 ---
 
 ## Phase 6 — SaveChanges / update pipeline
