@@ -4,9 +4,9 @@ An Entity Framework Core 10 provider for Databricks SQL, built on the BricksNet 
 supports LINQ queries, raw SQL, `SaveChanges`, `ExecuteUpdate`/`ExecuteDelete`, and
 `EnsureCreated`/`EnsureDeleted` for development.
 
-> **Status: preview.** The provider is covered by unit and SQL-baseline tests. A live test suite
-> exists (see [Testing against a workspace](#testing-against-a-workspace)) but has not yet been run
-> against a Databricks warehouse, so expect rough edges in the generated SQL.
+> **Status: preview.** The provider is covered by unit and SQL-baseline tests in CI, and by a live
+> functional suite that passes against a Databricks workspace (see
+> [Testing against a workspace](#testing-against-a-workspace)).
 
 ## Contents
 
