@@ -15,7 +15,7 @@ public sealed class BricksNetParameterTests
         Assert.Equal("@p", parameter.ParameterName);
         Assert.Equal(42, parameter.Value);
         Assert.Equal(ParameterDirection.Input, parameter.Direction);
-        Assert.Equal(DbType.String, parameter.DbType);
+        Assert.Equal(DbType.Int32, parameter.DbType);
     }
 
     [Fact]

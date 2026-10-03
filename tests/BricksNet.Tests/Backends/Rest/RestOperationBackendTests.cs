@@ -89,6 +89,36 @@ public sealed class RestOperationBackendTests
         Assert.StartsWith("[BAD_REQUEST]", ex.Message, StringComparison.Ordinal);
         Assert.Equal("42P01", ex.SqlState);
         Assert.Equal("st-3", ex.QueryId);
+        Assert.Equal("TABLE_OR_VIEW_NOT_FOUND", ex.ErrorClass);
+        Assert.False(ex.IsTransient);
+    }
+
+    [Fact]
+    public async Task FailedStatement_DeltaConflict_IsTransient()
+    {
+        const string initial = """
+            {"statement_id":"st-6","status":{"state":"FAILED","error":{"error_code":"BAD_REQUEST",
+             "message":"[DELTA_CONCURRENT_APPEND] Files were added to the root of the table by a concurrent update."}}}
+            """;
+        var (operation, _) = CreateOperation(initial);
+
+        var ex = await Assert.ThrowsAsync<BricksNetException>(() => operation.WaitForCompletionAsync());
+
+        Assert.Equal("DELTA_CONCURRENT_APPEND", ex.ErrorClass);
+        Assert.True(ex.IsTransient);
+    }
+
+    [Fact]
+    public async Task FailedStatement_WithoutErrorClass_DoesNotReportTheRestCode()
+    {
+        const string initial = """
+            {"statement_id":"st-7","status":{"state":"FAILED","error":{"error_code":"BAD_REQUEST","message":"Bad input"}}}
+            """;
+        var (operation, _) = CreateOperation(initial);
+
+        var ex = await Assert.ThrowsAsync<BricksNetException>(() => operation.WaitForCompletionAsync());
+
+        Assert.Null(ex.ErrorClass);
     }
 
     [Fact]

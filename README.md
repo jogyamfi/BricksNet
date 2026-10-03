@@ -3,12 +3,13 @@
 [![NuGet](https://img.shields.io/nuget/v/BricksNet.svg)](https://www.nuget.org/packages/BricksNet)
 [![Build](https://github.com/your-org/bricksnet/actions/workflows/build.yml/badge.svg)](https://github.com/your-org/bricksnet/actions/workflows/build.yml)
 -->
-**BricksNet** is a .NET 10 Databricks SQL client library providing two complementary surfaces:
+**BricksNet** is a .NET 10 Databricks SQL client library providing three complementary surfaces:
 
 - **Fluent async API** — `BricksNetClient → BricksNetSession → BricksNetOperation`
-- **ADO.NET provider** — `BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`; compatible with Dapper and EF Core (read)
+- **ADO.NET provider** — `BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`; compatible with Dapper
+- **EF Core provider** (preview) — `BricksNet.EntityFrameworkCore`: LINQ, `SaveChanges` and bulk operations over Delta tables ([guide](docs/EFCORE.md))
 
-Both surfaces target SQL Warehouses (REST backend) and All-purpose clusters (Thrift backend).
+All surfaces target SQL Warehouses (REST backend) and All-purpose clusters (Thrift backend).
 
 ---
 
@@ -85,6 +86,13 @@ For OAuth:
 Host=...;HttpPath=...;ClientId=<id>;ClientSecret=<secret>
 ```
 
+Add `KeepSessionAlive=true` to keep the Databricks session open across `Close()`/`Open()` cycles
+(it is released on `Dispose()`), which avoids starting a new session each time the connection opens.
+
+`ExecuteNonQuery` returns the rows affected by `INSERT`/`UPDATE`/`DELETE`/`MERGE`. A failed statement
+throws `BricksNetException`. Its `ErrorClass` holds the Databricks error class, and `IsTransient`
+flags errors that are safe to retry, such as Delta concurrent-write conflicts.
+
 ### Example with Dapper
 
 ```csharp
@@ -100,6 +108,42 @@ var rows = await conn.QueryAsync("SELECT id, name FROM my_catalog.my_schema.my_t
 foreach (var row in rows)
     Console.WriteLine($"{row.id}: {row.name}");
 ```
+
+---
+
+## Entity Framework Core (preview)
+
+`BricksNet.EntityFrameworkCore` is an EF Core 10 provider built on the ADO.NET layer. It supports LINQ
+queries, raw SQL, `SaveChanges`, `ExecuteUpdate`/`ExecuteDelete`, and `EnsureCreated`/`EnsureDeleted`
+for development. Migrations are not supported. See the **[EF Core provider guide](docs/EFCORE.md)**
+for configuration, type mapping, translations and limitations. The design and roadmap are in
+[docs/EFCORE_PLAN.md](docs/EFCORE_PLAN.md).
+
+```shell
+dotnet add package BricksNet.EntityFrameworkCore --prerelease
+```
+
+```csharp
+services.AddDbContext<SalesContext>(options => options.UseBricksNet(
+    "Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;Token=<pat>;Catalog=main;Schema=sales",
+    o => o.EnableRetryOnFailure()));
+
+var recent = await db.Orders.Where(o => o.Region == region).ToListAsync();
+db.Orders.Add(new Order { Id = Guid.CreateVersion7(), Region = region });
+await db.SaveChangesAsync();
+```
+
+Things that differ from SQL Server:
+
+- **No multi-statement transactions.** `BeginTransaction` and `TransactionScope` throw. A
+  `SaveChanges` that runs several statements is not atomic: if one fails, earlier ones stay committed
+  (and are marked as saved).
+- **No database-generated values.** Keys and defaults must be set in .NET. Integer keys are not
+  auto-generated, and `Guid` keys get version-7 values.
+- **Optimistic concurrency** works with properties you maintain yourself (`IsConcurrencyToken`), using
+  the affected-row count Databricks reports.
+
+Try it with the sample app: `dotnet run --project samples/BricksNet.Samples -- EfCore`.
 
 ---
 

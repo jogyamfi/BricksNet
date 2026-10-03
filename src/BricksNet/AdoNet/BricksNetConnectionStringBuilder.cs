@@ -35,6 +35,8 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
     private const string ProxyPasswordKey = "ProxyPassword";
     private const string AllowSelfSignedKey = "AllowSelfSignedCerts";
     private const string UserAgentKey = "UserAgent";
+    private const string KeepSessionAliveKey = "KeepSessionAlive";
+    private const string KeptSessionIdleTimeoutKey = "KeptSessionIdleTimeoutSeconds";
 
     /// <summary>Maps each alias keyword to its canonical keyword.</summary>
     private static readonly IReadOnlyDictionary<string, string> KeywordAliases =
@@ -206,6 +208,27 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
     {
         get => GetString(UserAgentKey);
         set => this[UserAgentKey] = value!;
+    }
+
+    /// <summary>
+    /// When <see langword="true"/>, closing the connection keeps its Databricks session open so
+    /// the next <c>Open</c> reuses it instead of starting a new one; the session is released when
+    /// the connection is disposed. Defaults to <see langword="false"/>.
+    /// </summary>
+    public bool KeepSessionAlive
+    {
+        get => GetBoolean(KeepSessionAliveKey, false);
+        set => this[KeepSessionAliveKey] = value;
+    }
+
+    /// <summary>
+    /// Seconds a session kept by <see cref="KeepSessionAlive"/> may sit idle before the next open
+    /// replaces it. Defaults to <c>900</c> (15 minutes).
+    /// </summary>
+    public int KeptSessionIdleTimeoutSeconds
+    {
+        get => GetInt32(KeptSessionIdleTimeoutKey, 900);
+        set => this[KeptSessionIdleTimeoutKey] = value;
     }
 
     /// <inheritdoc />

@@ -24,6 +24,7 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
     private IReadOnlyList<IReadOnlyDictionary<string, object?>> _currentChunk;
     private IReadOnlyList<Column> _columns;
     private int _rowInChunk = -1;
+    private int _recordsAffected;
     private bool _exhausted;
     private bool _closed;
 
@@ -42,6 +43,9 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
         _connectionToClose = connectionToClose;
         _columns = schema.Count > 0 ? BuildColumns(schema, firstChunk) : InferColumns(firstChunk);
         _exhausted = firstChunk.Count == 0;
+        _recordsAffected = firstChunk.Count > 0 && DmlSummary.IsSummary(_columns.Select(column => column.Name).ToArray())
+            ? DmlSummary.ReadAffectedRows(firstChunk[0])
+            : -1;
     }
 
     /// <inheritdoc />
@@ -56,8 +60,12 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
     /// <inheritdoc />
     public override bool IsClosed => _closed;
 
-    /// <inheritdoc />
-    public override int RecordsAffected => -1;
+    /// <summary>
+    /// The number of rows changed by a DML statement, taken from the <c>num_affected_rows</c>
+    /// summary Databricks returns for <c>INSERT</c>/<c>UPDATE</c>/<c>DELETE</c>/<c>MERGE</c>;
+    /// <c>-1</c> for queries and other statements.
+    /// </summary>
+    public override int RecordsAffected => _recordsAffected;
 
     /// <inheritdoc />
     public override object this[int ordinal] => GetValue(ordinal);
@@ -259,7 +267,7 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
             return typed;
         }
 
-        return (T)Convert.ChangeType(value, typeof(T), CultureInfo.InvariantCulture);
+        return (T)ReaderValueConverter.ChangeType(value, typeof(T), GetName(ordinal));
     }
 
     /// <inheritdoc />
@@ -449,7 +457,8 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
             "DECIMAL" or "NUMERIC" => typeof(decimal),
             "STRING" or "VARCHAR" or "CHAR" => typeof(string),
             "DATE" => typeof(DateOnly),
-            "TIMESTAMP" or "TIMESTAMP_NTZ" => typeof(DateTimeOffset),
+            "TIMESTAMP" => typeof(DateTimeOffset),
+            "TIMESTAMP_NTZ" => typeof(DateTime),
             "BINARY" => typeof(byte[]),
             _ => typeof(object),
         };
@@ -495,7 +504,7 @@ public sealed class BricksNetDataReader : DbDataReader, IAsyncEnumerable<IDataRe
         TypeCode.Double => "DOUBLE",
         TypeCode.Decimal => "DECIMAL",
         TypeCode.String => "STRING",
-        TypeCode.DateTime => "TIMESTAMP",
+        TypeCode.DateTime => "TIMESTAMP_NTZ",
         _ when clrType == typeof(DateOnly) => "DATE",
         _ when clrType == typeof(DateTimeOffset) => "TIMESTAMP",
         _ when clrType == typeof(byte[]) => "BINARY",

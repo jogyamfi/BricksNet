@@ -33,9 +33,9 @@ public sealed class BricksNetProviderFactory : DbProviderFactory
 
     /// <inheritdoc />
     public override DbCommandBuilder CreateCommandBuilder() =>
-        throw new NotSupportedException("BricksNet is a read-oriented provider and does not support DbCommandBuilder.");
+        throw new NotSupportedException("BricksNet does not support DbCommandBuilder; write explicit INSERT/UPDATE/DELETE/MERGE statements instead.");
 
     /// <inheritdoc />
     public override DbDataAdapter CreateDataAdapter() =>
-        throw new NotSupportedException("BricksNet is a read-oriented provider and does not support DbDataAdapter.");
+        throw new NotSupportedException("BricksNet does not support DbDataAdapter; use a DbDataReader or an ORM instead.");
 }

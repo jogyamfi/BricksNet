@@ -183,6 +183,10 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
             ? "The statement failed without an error message."
             : error.Message;
 
+        // The error class is read before the symbolic REST code is prepended, so a generic code
+        // such as "[BAD_REQUEST]" is never mistaken for it.
+        var errorClass = BricksNetException.ParseErrorClass(message);
+
         // The REST error code is symbolic (e.g. "BAD_REQUEST"), so it is carried in the message;
         // the SQLSTATE, when present, is embedded in the message text by the server.
         if (!string.IsNullOrEmpty(error?.ErrorCode))
@@ -194,7 +198,7 @@ internal sealed partial class RestOperationBackend : IOperationBackend, IOperati
             ? match.Groups[1].Value
             : null;
 
-        return new BricksNetException(message, sqlState, errorCode: 0, queryId: Id);
+        return new BricksNetException(message, sqlState, errorCode: 0, queryId: Id, errorClass);
     }
 
     [GeneratedRegex(@"SQLSTATE:\s*([0-9A-Z]{5})", RegexOptions.CultureInvariant)]

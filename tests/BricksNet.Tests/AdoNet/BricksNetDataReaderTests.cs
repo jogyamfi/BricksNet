@@ -199,7 +199,7 @@ public sealed class BricksNetDataReaderTests
         Assert.Equal("DOUBLE", reader.GetDataTypeName(reader.GetOrdinal("f64")));
         Assert.Equal("DECIMAL", reader.GetDataTypeName(reader.GetOrdinal("dec")));
         Assert.Equal("STRING", reader.GetDataTypeName(reader.GetOrdinal("str")));
-        Assert.Equal("TIMESTAMP", reader.GetDataTypeName(reader.GetOrdinal("dt")));
+        Assert.Equal("TIMESTAMP_NTZ", reader.GetDataTypeName(reader.GetOrdinal("dt")));
         Assert.Equal("TIMESTAMP", reader.GetDataTypeName(reader.GetOrdinal("dto")));
         Assert.Equal("DATE", reader.GetDataTypeName(reader.GetOrdinal("dateonly")));
         Assert.Equal("BINARY", reader.GetDataTypeName(reader.GetOrdinal("bin")));

@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>BricksNet.EntityFrameworkCore</AssemblyName>
+    <RootNamespace>BricksNet.EntityFrameworkCore</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Match the core library: XML docs are written for the public surface but not yet enforced. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- EF1001: EF Core providers are built on EF's "internal" (pubternal) APIs by design, as the
+         SQLite, SQL Server and Npgsql providers are. -->
+    <NoWarn>$(NoWarn);EF1001</NoWarn>
+
+    <!-- NuGet package metadata -->
+    <PackageId>BricksNet.EntityFrameworkCore</PackageId>
+    <Version>0.1.0-alpha</Version>
+    <Authors>James Gyamfi</Authors>
+    <Company>JamesGyamfi</Company>
+    <Description>Entity Framework Core provider for Databricks SQL, built on BricksNet.</Description>
+    <PackageTags>databricks;entity-framework-core;efcore;sql;delta</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/your-org/bricksnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/your-org/bricksnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BricksNet\BricksNet.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="BricksNet.EntityFrameworkCore.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -26,6 +26,7 @@ internal static class FixtureLibrary
     public const string SelectStatementId = "01ef-fixture-select";
     public const string DirectStatementId = "01ef-fixture-direct";
     public const string AdoStatementId = "01ef-fixture-ado";
+    public const string AdoDmlStatementId = "01ef-fixture-ado-dml";
     public const string CloudFetchStatementId = "01ef-fixture-cloudfetch";
 
     private const string StatementsPath = "/api/2.0/sql/statements";
@@ -41,6 +42,7 @@ internal static class FixtureLibrary
         await SeedExecuteSelectAsync(root).ConfigureAwait(false);
         await SeedExecuteDirectAsync(root).ConfigureAwait(false);
         await SeedAdoNetAsync(root).ConfigureAwait(false);
+        await SeedAdoNetDmlAsync(root).ConfigureAwait(false);
         await SeedCloudFetchAsync(root, baseUrl).ConfigureAwait(false);
     }
 
@@ -74,6 +76,16 @@ internal static class FixtureLibrary
         await WriteAsync(
             dir, 0, "POST", StatementsPath,
             JsonResponse(SampleSuccessBody(AdoStatementId))).ConfigureAwait(false);
+    }
+
+    // ---- adonet/execute_dml: Databricks reports DML row counts as a num_* summary result set ----
+    private static async Task SeedAdoNetDmlAsync(string root)
+    {
+        var dir = Path.Combine(root, "adonet", "execute_dml");
+
+        await WriteAsync(
+            dir, 0, "POST", StatementsPath,
+            JsonResponse(DmlSummaryBody(AdoDmlStatementId, affectedRows: 2))).ConfigureAwait(false);
     }
 
     // ---- cloudfetch: POST returns external links; two ordered chunk files are served separately ----
@@ -131,6 +143,37 @@ internal static class FixtureLibrary
             ["data_array"] = SampleDataArray(),
         },
     };
+
+    private static JsonObject DmlSummaryBody(string statementId, int affectedRows)
+    {
+        var count = affectedRows.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return new JsonObject
+        {
+            ["statement_id"] = statementId,
+            ["status"] = new JsonObject { ["state"] = "SUCCEEDED" },
+            ["manifest"] = new JsonObject
+            {
+                ["format"] = "JSON_ARRAY",
+                ["schema"] = new JsonObject
+                {
+                    ["column_count"] = 2,
+                    ["columns"] = new JsonArray
+                    {
+                        Column("num_affected_rows", "BIGINT", 0),
+                        Column("num_inserted_rows", "BIGINT", 1),
+                    },
+                },
+                ["total_row_count"] = 1,
+                ["total_chunk_count"] = 1,
+            },
+            ["result"] = new JsonObject
+            {
+                ["chunk_index"] = 0,
+                ["row_count"] = 1,
+                ["data_array"] = new JsonArray { new JsonArray(JsonValue.Create(count), JsonValue.Create(count)) },
+            },
+        };
+    }
 
     private static JsonArray SampleDataArray()
     {

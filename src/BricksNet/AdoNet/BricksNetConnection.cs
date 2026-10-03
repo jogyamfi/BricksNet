@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using BricksNet.Contracts;
 using BricksNet.Contracts.Options;
 
@@ -18,6 +19,8 @@ namespace BricksNet.AdoNet;
 /// </remarks>
 public sealed class BricksNetConnection : DbConnection
 {
+    private readonly Func<BricksNetClientOptions, string?, IBricksNetClient>? _clientFactory;
+
     private string _connectionString = string.Empty;
     private BricksNetClientOptions? _clientOptions;
     private string? _accessToken;
@@ -25,6 +28,8 @@ public sealed class BricksNetConnection : DbConnection
 
     private IBricksNetClient? _client;
     private IBricksNetSession? _session;
+    private string? _serverVersion;
+    private long _keptSince;
     private ConnectionState _state = ConnectionState.Closed;
 
     /// <summary>Initialises an empty connection.</summary>
@@ -39,24 +44,47 @@ public sealed class BricksNetConnection : DbConnection
         ConnectionString = connectionString;
     }
 
+    /// <summary>
+    /// Initialises a connection from a connection string, creating its fluent client with
+    /// <paramref name="clientFactory"/> instead of the static <see cref="ClientFactory"/>.
+    /// </summary>
+    /// <param name="connectionString">The BricksNet connection string.</param>
+    /// <param name="clientFactory">
+    /// Creates the client from the parsed options and access token; <see langword="null"/> uses
+    /// <see cref="ClientFactory"/>.
+    /// </param>
+    public BricksNetConnection(
+        string connectionString,
+        Func<BricksNetClientOptions, string?, IBricksNetClient>? clientFactory)
+    {
+        _clientFactory = clientFactory;
+        ConnectionString = connectionString;
+    }
+
     /// <summary>Initialises a connection from pre-built client options.</summary>
     /// <param name="options">The client options.</param>
     /// <param name="accessToken">Optional access token used for PAT authentication.</param>
     /// <param name="sessionOptions">Optional per-session defaults.</param>
+    /// <param name="clientFactory">
+    /// Optional factory for the fluent client; <see langword="null"/> uses <see cref="ClientFactory"/>.
+    /// </param>
     public BricksNetConnection(
         BricksNetClientOptions options,
         string? accessToken = null,
-        SessionOptions? sessionOptions = null)
+        SessionOptions? sessionOptions = null,
+        Func<BricksNetClientOptions, string?, IBricksNetClient>? clientFactory = null)
     {
         _clientOptions = options ?? throw new ArgumentNullException(nameof(options));
         _accessToken = accessToken;
         _sessionOptions = sessionOptions ?? new SessionOptions();
+        _clientFactory = clientFactory;
     }
 
     /// <summary>
     /// Factory that creates the underlying fluent client from the parsed options and access
-    /// token. Defaults to the production <see cref="BricksNetClient"/> wired by the Phase 10
-    /// fluent API; tests may override it to inject a fake client.
+    /// token, used by connections constructed without their own factory. Defaults to the
+    /// production <see cref="BricksNetClient"/>. Tests may override it to inject a fake client, but
+    /// the constructor overloads that take a factory are preferred because they are safe in parallel.
     /// </summary>
     public static Func<BricksNetClientOptions, string?, IBricksNetClient>? ClientFactory { get; set; }
         = static (options, accessToken) => new BricksNetClient(options, accessToken);
@@ -73,12 +101,45 @@ public sealed class BricksNetConnection : DbConnection
                 throw new InvalidOperationException("The connection string cannot be changed while the connection is open.");
             }
 
+            // A session kept alive by Close() belongs to the previous target; release it first.
+            if (_client is not null)
+            {
+                CleanupAsync().GetAwaiter().GetResult();
+            }
+
             _connectionString = value ?? string.Empty;
             var builder = new BricksNetConnectionStringBuilder(_connectionString);
             _clientOptions = builder.ToClientOptions(out _accessToken);
             _sessionOptions = builder.ToSessionOptions();
+            KeepSessionAlive = builder.KeepSessionAlive;
+            KeptSessionIdleTimeout = TimeSpan.FromSeconds(builder.KeptSessionIdleTimeoutSeconds);
         }
     }
+
+    /// <summary>The default for <see cref="KeptSessionIdleTimeout"/>: 15 minutes.</summary>
+    public static readonly TimeSpan DefaultKeptSessionIdleTimeout = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// When <see langword="true"/>, <see cref="Close"/> keeps the Databricks session open so the
+    /// next <see cref="Open"/> reuses it instead of starting a new one; the session is released when
+    /// the connection is disposed. Set from the <c>KeepSessionAlive</c> connection-string keyword.
+    /// Defaults to <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// The server can expire an idle session, so a session kept for longer than
+    /// <see cref="KeptSessionIdleTimeout"/> is replaced by a new one on the next open.
+    /// </remarks>
+    public bool KeepSessionAlive { get; set; }
+
+    /// <summary>
+    /// How long a session kept by <see cref="KeepSessionAlive"/> may sit idle before the next open
+    /// replaces it with a new session, rather than risk using one the server has expired. Set from the
+    /// <c>KeptSessionIdleTimeoutSeconds</c> connection-string keyword. Defaults to 15 minutes.
+    /// </summary>
+    public TimeSpan KeptSessionIdleTimeout { get; set; } = DefaultKeptSessionIdleTimeout;
+
+    /// <summary>The clock used to measure how long a kept session has been idle; replaceable in tests.</summary>
+    internal TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 
     /// <inheritdoc />
     public override string Database => _sessionOptions.Schema ?? string.Empty;
@@ -86,8 +147,20 @@ public sealed class BricksNetConnection : DbConnection
     /// <inheritdoc />
     public override string DataSource => _clientOptions?.Host ?? string.Empty;
 
-    /// <summary>Returns the Databricks server version, when known; otherwise an empty string.</summary>
-    public override string ServerVersion => string.Empty;
+    /// <summary>
+    /// The Apache Spark version reported by the server (for example <c>3.5.0</c>). While open, the
+    /// first access runs a query and blocks on it, so prefer <see cref="GetServerVersionAsync"/>.
+    /// While closed, returns the cached value or an empty string.
+    /// </summary>
+    public override string ServerVersion => _state == ConnectionState.Open
+        ? GetServerVersionAsync(CancellationToken.None).GetAwaiter().GetResult()
+        : _serverVersion ?? string.Empty;
+
+    /// <summary>
+    /// <see cref="ServerVersion"/> parsed as a <see cref="Version"/>, or <see langword="null"/>
+    /// when it is unknown or cannot be parsed. Use it to gate features on the server version.
+    /// </summary>
+    public Version? SparkVersion => Version.TryParse(ServerVersion, out var version) ? version : null;
 
     /// <inheritdoc />
     public override ConnectionState State => _state;
@@ -116,20 +189,33 @@ public sealed class BricksNetConnection : DbConnection
             throw new InvalidOperationException("No connection string or client options have been supplied.");
         }
 
-        var factory = ClientFactory
-            ?? throw new InvalidOperationException(
-                "No BricksNet client factory is configured. Assign BricksNetConnection.ClientFactory "
-                + "(the Phase 10 fluent API registers the production factory).");
+        // A session kept alive by a previous Close() is reused, unless it has been idle long enough that
+        // the server may have expired it.
+        if (_client is not null && _keptSince != 0 && TimeProvider.GetElapsedTime(_keptSince) > KeptSessionIdleTimeout)
+        {
+            await ReleaseStaleSessionAsync().ConfigureAwait(false);
+        }
+
+        _keptSince = 0;
+
+        var factory = _client is not null
+            ? null
+            : _clientFactory ?? ClientFactory
+                ?? throw new InvalidOperationException(
+                    "No BricksNet client factory is configured. Pass one to the constructor or assign "
+                    + "BricksNetConnection.ClientFactory.");
 
         SetState(ConnectionState.Connecting);
         try
         {
-            var client = factory(_clientOptions, _accessToken);
-            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            var session = await client.OpenSessionAsync(_sessionOptions, cancellationToken).ConfigureAwait(false);
+            if (factory is not null)
+            {
+                // Assigned before connecting so that a failed connect is still cleaned up below.
+                _client = factory(_clientOptions, _accessToken);
+                await _client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            }
 
-            _client = client;
-            _session = session;
+            _session ??= await _client!.OpenSessionAsync(_sessionOptions, cancellationToken).ConfigureAwait(false);
             SetState(ConnectionState.Open);
         }
         catch
@@ -143,7 +229,10 @@ public sealed class BricksNetConnection : DbConnection
     /// <inheritdoc />
     public override void Close() => CloseAsync().GetAwaiter().GetResult();
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Closes the connection. With <see cref="KeepSessionAlive"/> set, the session stays open for
+    /// the next <see cref="OpenAsync(CancellationToken)"/> to reuse.
+    /// </summary>
     public override async Task CloseAsync()
     {
         if (_state == ConnectionState.Closed)
@@ -151,13 +240,34 @@ public sealed class BricksNetConnection : DbConnection
             return;
         }
 
-        await CleanupAsync().ConfigureAwait(false);
+        if (KeepSessionAlive)
+        {
+            _keptSince = TimeProvider.GetTimestamp();
+        }
+        else
+        {
+            await CleanupAsync().ConfigureAwait(false);
+        }
+
         SetState(ConnectionState.Closed);
+    }
+
+    // Closing a session the server already expired can fail; the connection is replacing it anyway.
+    private async Task ReleaseStaleSessionAsync()
+    {
+        try
+        {
+            await CleanupAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+        }
     }
 
     /// <summary>
     /// Sets the default schema for unqualified object references. Takes effect on the next
-    /// opened session; an already-open session is re-opened to apply the change.
+    /// opened session: an open session is re-opened to apply the change, and a session kept alive
+    /// while closed is released.
     /// </summary>
     /// <param name="databaseName">The schema name.</param>
     public override void ChangeDatabase(string databaseName)
@@ -165,10 +275,51 @@ public sealed class BricksNetConnection : DbConnection
         ArgumentException.ThrowIfNullOrEmpty(databaseName);
         _sessionOptions = _sessionOptions with { Schema = databaseName };
 
-        if (_state == ConnectionState.Open && _client is not null)
+        if (_client is null || _session is null)
         {
-            _session?.CloseAsync().GetAwaiter().GetResult();
+            return;
+        }
+
+        _session.CloseAsync().GetAwaiter().GetResult();
+        _session = null;
+        if (_state == ConnectionState.Open)
+        {
             _session = _client.OpenSessionAsync(_sessionOptions).GetAwaiter().GetResult();
+        }
+    }
+
+    /// <summary>
+    /// Returns the Apache Spark version reported by the server (for example <c>3.5.0</c>). Runs
+    /// <c>SELECT version()</c> on the first call and caches the result until the session is released.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the query.</param>
+    /// <exception cref="InvalidOperationException">The connection is not open and no version is cached.</exception>
+    public async Task<string> GetServerVersionAsync(CancellationToken cancellationToken = default)
+    {
+        if (_serverVersion is not null)
+        {
+            return _serverVersion;
+        }
+
+        var operation = await GetOpenSession()
+            .ExecuteStatementAsync("SELECT version()", cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            var rows = await operation
+                .FetchChunkAsync<IReadOnlyDictionary<string, object?>>(1, cancellationToken)
+                .ConfigureAwait(false);
+
+            // version() returns "<spark version> <git revision>"; keep only the version number.
+            var text = rows.Count > 0
+                ? Convert.ToString(rows[0].Values.FirstOrDefault(), CultureInfo.InvariantCulture)
+                : null;
+            _serverVersion = text?.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
+            return _serverVersion;
+        }
+        finally
+        {
+            await operation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
         }
     }
 
@@ -193,10 +344,10 @@ public sealed class BricksNetConnection : DbConnection
         return _session;
     }
 
-    /// <inheritdoc />
+    /// <summary>Closes the connection and releases its session, including one kept alive.</summary>
     protected override void Dispose(bool disposing)
     {
-        if (disposing && _state != ConnectionState.Closed)
+        if (disposing && (_state != ConnectionState.Closed || _client is not null))
         {
             CleanupAsync().GetAwaiter().GetResult();
             SetState(ConnectionState.Closed);
@@ -205,10 +356,11 @@ public sealed class BricksNetConnection : DbConnection
         base.Dispose(disposing);
     }
 
-    /// <inheritdoc />
+    /// <summary>Closes the connection and releases its session, including one kept alive.</summary>
     public override async ValueTask DisposeAsync()
     {
-        await CloseAsync().ConfigureAwait(false);
+        await CleanupAsync().ConfigureAwait(false);
+        SetState(ConnectionState.Closed);
         GC.SuppressFinalize(this);
     }
 
@@ -230,6 +382,7 @@ public sealed class BricksNetConnection : DbConnection
         {
             _session = null;
             _client = null;
+            _serverVersion = null;
         }
     }
 

@@ -107,7 +107,11 @@ public sealed class BricksNetCommand : DbCommand
         // Databricks SQL has no server-side prepared-statement handle; this is a no-op.
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Executes the statement and returns the number of rows changed by an
+    /// <c>INSERT</c>/<c>UPDATE</c>/<c>DELETE</c>/<c>MERGE</c> (from the server's
+    /// <c>num_affected_rows</c> summary), or <c>-1</c> for other statements.
+    /// </summary>
     public override int ExecuteNonQuery() => ExecuteNonQueryAsync(CancellationToken.None).GetAwaiter().GetResult();
 
     /// <inheritdoc />
@@ -124,13 +128,30 @@ public sealed class BricksNetCommand : DbCommand
             // Wait for the statement to finish before closing it: closing a still-running Thrift
             // operation aborts it, and a failed statement must surface as an exception.
             await operation.WaitForCompletionAsync(cancellationToken).ConfigureAwait(false);
+            return await ReadAffectedRowsAsync(operation, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             await operation.CloseAsync().ConfigureAwait(false);
         }
+    }
 
-        return -1;
+    /// <summary>
+    /// Reads the affected-row count from a DML summary result set. Rows are fetched only when the
+    /// reported schema is a summary, so DDL and other statements without a result set are never fetched.
+    /// </summary>
+    private static async Task<int> ReadAffectedRowsAsync(IBricksNetOperation operation, CancellationToken cancellationToken)
+    {
+        var schema = await operation.GetSchemaAsync(cancellationToken).ConfigureAwait(false);
+        if (!DmlSummary.IsSummary(schema))
+        {
+            return -1;
+        }
+
+        var rows = await operation
+            .FetchChunkAsync<IReadOnlyDictionary<string, object?>>(1, cancellationToken)
+            .ConfigureAwait(false);
+        return rows.Count == 0 ? -1 : DmlSummary.ReadAffectedRows(rows[0]);
     }
 
     /// <inheritdoc />
@@ -234,7 +255,7 @@ public sealed class BricksNetCommand : DbCommand
             result.Add(new ContractParameter(
                 parameter.ParameterName.TrimStart('@', ':'),
                 parameter.Value,
-                parameter.TypeHint));
+                parameter.TypeHint ?? parameter.GetDbTypeHint()));
         }
 
         return result;

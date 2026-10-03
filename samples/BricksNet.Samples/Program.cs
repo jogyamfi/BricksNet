@@ -18,6 +18,7 @@ const string Usage = """
       FluentOAuth  — Fluent API with OAuth 2.0 PKCE (launches a browser window)
       AdoNetDapper — ADO.NET provider with Dapper (dynamic + typed POCO)
       Di           — Dependency Injection via AddBricksNet()
+      EfCore       — Entity Framework Core provider (creates and drops demo tables)
 
     With no argument, FluentPat runs.
 
@@ -27,6 +28,7 @@ const string Usage = """
         Databricks__Host=adb-xxx.azuredatabricks.net
         Databricks__HttpPath=/sql/1.0/warehouses/yyy
         Databricks__Token=dapi...
+        Databricks__Catalog=main          (EfCore demo only)
     """;
 
 // With no argument (e.g. F5 in the IDE) the PAT demo runs by default.
@@ -44,6 +46,7 @@ try
         "FluentOAuth"  => FluentOAuthDemo.RunAsync(config),
         "AdoNetDapper" => AdoNetDapperDemo.RunAsync(config),
         "Di"           => DiDemo.RunAsync(config),
+        "EfCore"       => EfCoreDemo.RunAsync(config),
         _              => Task.FromException(new ArgumentException($"Unknown demo '{demo}'.")),
     });
 }
