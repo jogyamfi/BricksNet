@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using BricksNet.Backends;
 using BricksNet.Contracts;
 using BricksNet.Contracts.Options;
 using BricksNet.Telemetry;
@@ -65,8 +66,10 @@ public sealed class BricksNetSession : IBricksNetSession
 
         LogMessages.StatementExecuting(_logger, sql.Length, _backendName);
 
+        // Databricks rejects BINARY parameter markers; send them as hex strings wrapped in unhex().
+        var (backendSql, parameters) = BinaryParameterRewriter.Rewrite(sql, effective.Parameters);
         var operationBackend = await _backend
-            .ExecuteStatementAsync(sql, effective, cancellationToken)
+            .ExecuteStatementAsync(backendSql, effective with { Parameters = parameters }, cancellationToken)
             .ConfigureAwait(false);
 
         BricksNetActivitySource.SetStatementId(activity, operationBackend.Id);

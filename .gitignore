@@ -37,3 +37,6 @@ Thumbs.db
 publish/
 
 appSettings.User.json
+
+# Live test credentials (see docs/LIVE_TESTING.md)
+scripts/live-tests.env

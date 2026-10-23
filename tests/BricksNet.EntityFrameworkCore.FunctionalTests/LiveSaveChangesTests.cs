@@ -88,9 +88,11 @@ public sealed class LiveSaveChangesTests(LiveDatabaseFixture fixture)
         Assert.Equal(10, await range.Where(b => b.Group!.Region == "north").ExecuteUpdateAsync(s => s.SetProperty(b => b.Value, b => b.Value * 10)));
         Assert.Equal(5, await range.OrderBy(b => b.Id).Take(5).ExecuteUpdateAsync(s => s.SetProperty(b => b.Status, "first")));
         Assert.Equal(3, await range.OrderBy(b => b.Id).Take(3).ExecuteDeleteAsync());
-        Assert.Equal(10, await range.Where(b => b.Group!.Region == "south").ExecuteDeleteAsync());
 
-        Assert.Equal(7, await range.CountAsync());
+        // Odd items are in the south group; two of them (1 and 3) were deleted above.
+        Assert.Equal(8, await range.Where(b => b.Group!.Region == "south").ExecuteDeleteAsync());
+
+        Assert.Equal(9, await range.CountAsync());
     }
 
     [LiveFact]

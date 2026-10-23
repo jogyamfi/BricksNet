@@ -57,9 +57,9 @@ public static partial class HttpClientBuilderExtensions
         }
         else if (options.UseThrift)
         {
-            // Thrift (HiveServer2) endpoint enforces a Simba driver allow-list; auto-inject the
-            // default value so callers do not need to configure it manually.
-            effectiveUserAgent = BricksNetDefaults.ThriftUserAgent;
+            // The Thrift (HiveServer2) endpoint only accepts known driver names as the first
+            // User-Agent token; lead with one and keep BricksNet's own identifier after it.
+            effectiveUserAgent = $"{BricksNetDefaults.ThriftUserAgent} {clientOptions.UserAgent}";
             wasNormalized = false;
         }
         else

@@ -186,11 +186,25 @@ metadata calls, so the REST backend runs `SHOW CATALOGS` / `SHOW SCHEMAS` / `SHO
 `SHOW COLUMNS` and returns their Databricks SQL columns instead. On REST, `GetColumnsAsync` requires a
 table name and ignores the column pattern, and `%` in patterns is translated to the `*` wildcard.
 
+### Timestamp precision on REST
+
+Databricks stores timestamps to the microsecond. The REST API only allows inline results as
+`JSON_ARRAY`, which renders `TIMESTAMP` and `TIMESTAMP_NTZ` values to the **millisecond**, so REST
+without CloudFetch returns millisecond precision. Thrift, and REST with `UseCloudFetch = true`, return
+Arrow results with full microsecond precision.
+
 ---
 
 ## Logging & Telemetry
 
 BricksNet writes structured logs via `Microsoft.Extensions.Logging` and emits OpenTelemetry-compatible `Activity` spans under the `BricksNet` source name. Register your preferred sink in the normal way.
+
+---
+
+## Live testing
+
+The default `dotnet test` run is offline. To run the live suites against a real (including free)
+Databricks workspace, see **[docs/LIVE_TESTING.md](docs/LIVE_TESTING.md)**.
 
 ---
 

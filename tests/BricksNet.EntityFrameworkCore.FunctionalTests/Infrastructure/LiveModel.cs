@@ -176,7 +176,14 @@ public sealed class LiveContext(DbContextOptions<LiveContext> options, string ca
             customer.HasMany(c => c.Orders).WithOne(o => o.Customer).HasForeignKey(o => o.CustomerId);
         });
         modelBuilder.Entity<Order>().ToTable("orders");
-        modelBuilder.Entity<Sample>().ToTable("samples");
+        modelBuilder.Entity<Sample>(sample =>
+        {
+            sample.ToTable("samples");
+
+            // The default DECIMAL(18,2) would round seed values such as 0.005 on insert, so translated
+            // rounding would no longer see the midpoints the in-memory comparison sees.
+            sample.Property(s => s.Amount).HasPrecision(18, 4);
+        });
         modelBuilder.Entity<TypeRow>(row =>
         {
             row.ToTable("type_rows");

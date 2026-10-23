@@ -1,3 +1,5 @@
+using Apache.Arrow;
+using Apache.Arrow.Ipc;
 using BricksNet.AdoNet;
 using BricksNet.Contracts;
 using BricksNet.Contracts.Options;
@@ -9,8 +11,8 @@ namespace BricksNet.Backends.Thrift;
 /// <summary>
 /// Thrift implementation of <see cref="IOperationBackend"/>. Stores the opaque
 /// <see cref="TOperationHandle"/> and replays it on every subsequent RPC. Result
-/// fetching materialises Arrow inline batches and CloudFetch links; legacy
-/// row/column result sets are reported as unsupported (refined in Phase 7).
+/// fetching materialises Arrow inline batches, CloudFetch links and the column-based
+/// sets returned by metadata operations; row-based result sets are reported as unsupported.
 /// </summary>
 internal sealed class ThriftOperationBackend : IOperationBackend, IOperationFailureSource
 {
@@ -85,7 +87,8 @@ internal sealed class ThriftOperationBackend : IOperationBackend, IOperationFail
 
         if (rowSet?.ResultLinks is { Count: > 0 } links)
         {
-            return new FetchResult(ResultFormat.CloudFetch, ReadOnlyMemory<byte>.Empty, MapLinks(links), schema, hasMoreRows);
+            return new FetchResult(
+                ResultFormat.CloudFetch, ReadOnlyMemory<byte>.Empty, MapLinks(links), schema, hasMoreRows, metadata.Lz4Compressed);
         }
 
         if (rowSet?.ArrowBatches is { Count: > 0 } batches)
@@ -93,10 +96,16 @@ internal sealed class ThriftOperationBackend : IOperationBackend, IOperationFail
             return new FetchResult(ResultFormat.Arrow, BuildArrowPayload(metadata, batches), null, schema, hasMoreRows);
         }
 
-        if (rowSet?.HasColumnarData == true)
+        if (rowSet?.Columns is { Count: > 0 } columns && columns[0].Values.Count > 0)
+        {
+            var payload = await BuildArrowPayloadAsync(metadata, columns, cancellationToken).ConfigureAwait(false);
+            return new FetchResult(ResultFormat.Arrow, payload, null, schema, hasMoreRows);
+        }
+
+        if (rowSet?.HasRowData == true)
         {
             throw new BricksNetException(
-                "The Databricks server returned a legacy row/column result set, which the Thrift backend does not support. " +
+                "The Databricks server returned a row-based result set, which the Thrift backend does not support. " +
                 "Ensure the warehouse supports Arrow results.");
         }
 
@@ -143,7 +152,7 @@ internal sealed class ThriftOperationBackend : IOperationBackend, IOperationFail
         var columns = metadata.Schema?.Columns;
         if (columns is null || columns.Count == 0)
         {
-            return Array.Empty<ColumnInfo>();
+            return System.Array.Empty<ColumnInfo>();
         }
 
         var schema = new List<ColumnInfo>(columns.Count);
@@ -190,11 +199,23 @@ internal sealed class ThriftOperationBackend : IOperationBackend, IOperationFail
         TGetResultSetMetadataResp metadata,
         IReadOnlyList<TSparkArrowBatch> batches)
     {
-        var schemaBytes = metadata.ArrowSchema ?? Array.Empty<byte>();
-        var totalLength = schemaBytes.Length;
+        var schemaBytes = metadata.ArrowSchema ?? System.Array.Empty<byte>();
+
+        // We advertise canDecompressLZ4Result, so each inline batch may be its own LZ4 frame.
+        // The schema is never compressed.
+        var batchBytes = new List<byte[]>(batches.Count);
         foreach (var batch in batches)
         {
-            totalLength += batch.Batch?.Length ?? 0;
+            if (batch.Batch is { Length: > 0 } data)
+            {
+                batchBytes.Add(metadata.Lz4Compressed ? Lz4Decompressor.Decode(data) : data);
+            }
+        }
+
+        var totalLength = schemaBytes.Length;
+        foreach (var data in batchBytes)
+        {
+            totalLength += data.Length;
         }
 
         totalLength += ArrowEos.Length;
@@ -207,18 +228,80 @@ internal sealed class ThriftOperationBackend : IOperationBackend, IOperationFail
             offset += schemaBytes.Length;
         }
 
-        foreach (var batch in batches)
+        foreach (var data in batchBytes)
         {
-            if (batch.Batch is { Length: > 0 } data)
-            {
-                Buffer.BlockCopy(data, 0, payload, offset, data.Length);
-                offset += data.Length;
-            }
+            Buffer.BlockCopy(data, 0, payload, offset, data.Length);
+            offset += data.Length;
         }
 
         ArrowEos.CopyTo(payload.AsSpan(offset));
 
         return payload;
+    }
+
+    // Metadata operations return column-based sets. Re-encode them as an Arrow IPC stream so they
+    // flow through the same ArrowResultHandler as statement results.
+    private static async Task<ReadOnlyMemory<byte>> BuildArrowPayloadAsync(
+        TGetResultSetMetadataResp metadata,
+        IReadOnlyList<TColumn> columns,
+        CancellationToken cancellationToken)
+    {
+        var names = metadata.Schema?.Columns;
+        var rowCount = columns[0].Values.Count;
+        var schemaBuilder = new Schema.Builder();
+        var arrays = new List<IArrowArray>(columns.Count);
+        for (var i = 0; i < columns.Count; i++)
+        {
+            var array = ToArrowArray(columns[i]);
+            var name = names is not null && i < names.Count ? names[i].ColumnName : null;
+            schemaBuilder.Field(new Field(name ?? $"col{i}", array.Data.DataType, nullable: true));
+            arrays.Add(array);
+        }
+
+        var schema = schemaBuilder.Build();
+        using var batch = new RecordBatch(schema, arrays, rowCount);
+        using var stream = new MemoryStream();
+        using (var writer = new ArrowStreamWriter(stream, schema, leaveOpen: true))
+        {
+            await writer.WriteRecordBatchAsync(batch, cancellationToken).ConfigureAwait(false);
+            await writer.WriteEndAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return stream.ToArray();
+    }
+
+    private static IArrowArray ToArrowArray(TColumn column) => column.Kind switch
+    {
+        TColumnKind.Bool => Build(column, new BooleanArray.Builder(), (b, v) => b.Append((bool)v), b => b.AppendNull(), b => b.Build()),
+        TColumnKind.Byte => Build(column, new Int8Array.Builder(), (b, v) => b.Append((sbyte)v), b => b.AppendNull(), b => b.Build()),
+        TColumnKind.I16 => Build(column, new Int16Array.Builder(), (b, v) => b.Append((short)v), b => b.AppendNull(), b => b.Build()),
+        TColumnKind.I32 => Build(column, new Int32Array.Builder(), (b, v) => b.Append((int)v), b => b.AppendNull(), b => b.Build()),
+        TColumnKind.I64 => Build(column, new Int64Array.Builder(), (b, v) => b.Append((long)v), b => b.AppendNull(), b => b.Build()),
+        TColumnKind.Double => Build(column, new DoubleArray.Builder(), (b, v) => b.Append((double)v), b => b.AppendNull(), b => b.Build()),
+        TColumnKind.String => Build(column, new StringArray.Builder(), (b, v) => b.Append((string)v), b => b.AppendNull(), b => b.Build()),
+        _ => Build(column, new BinaryArray.Builder(), (b, v) => b.Append(((byte[])v).AsSpan()), b => b.AppendNull(), b => b.Build()),
+    };
+
+    private static IArrowArray Build<TBuilder>(
+        TColumn column,
+        TBuilder builder,
+        Action<TBuilder, object> append,
+        Action<TBuilder> appendNull,
+        Func<TBuilder, IArrowArray> build)
+    {
+        for (var row = 0; row < column.Values.Count; row++)
+        {
+            if (column.IsNull(row))
+            {
+                appendNull(builder);
+            }
+            else
+            {
+                append(builder, column.Values[row]!);
+            }
+        }
+
+        return build(builder);
     }
 
     private static QueryStatus MapState(TOperationState state) => state switch

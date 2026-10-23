@@ -3,10 +3,11 @@
 // IDL. See ThriftWire.cs for the regeneration note.
 //
 // Scope note: the BricksNet Thrift backend always requests Arrow results
-// (canReadArrowResult = true), so this subset materialises only the Arrow inline
-// batches (arrowBatches) and CloudFetch links (resultLinks). Legacy row/column
-// based result sets are skipped on read; FetchResultsAsync surfaces a clear error
-// if a server ever returns them.
+// (canReadArrowResult = true), so statements return Arrow inline batches
+// (arrowBatches) or CloudFetch links (resultLinks). Metadata operations
+// (GetSchemas, GetTables, ...) ignore that flag and return column-based sets
+// (columns), which are materialised too. Row-based sets (rows) are skipped on read;
+// FetchResultsAsync surfaces a clear error if a server ever returns them.
 // </auto-generated>
 #nullable enable
 using System.Diagnostics.CodeAnalysis;
@@ -101,16 +102,137 @@ internal sealed class TSparkArrowResultLink
     }
 }
 
+/// <summary>The value type held by a <see cref="TColumn"/> (the union arm that was set).</summary>
+internal enum TColumnKind
+{
+    Bool = 1,
+    Byte = 2,
+    I16 = 3,
+    I32 = 4,
+    I64 = 5,
+    Double = 6,
+    String = 7,
+    Binary = 8,
+}
+
+/// <summary>
+/// One column of a column-based result set: the <c>TColumn</c> union flattened to its set arm.
+/// <see cref="Values"/> holds <c>bool</c>, <c>sbyte</c>, <c>short</c>, <c>int</c>, <c>long</c>,
+/// <c>double</c>, <c>string</c> or <c>byte[]</c> items according to <see cref="Kind"/>.
+/// </summary>
+[ExcludeFromCodeCoverage]
+internal sealed class TColumn
+{
+    public TColumnKind Kind { get; private set; }
+    public System.Collections.IList Values { get; private set; } = new List<object>();
+
+    /// <summary>Null bitmap: bit <c>i % 8</c> of byte <c>i / 8</c> is set when row <c>i</c> is null.</summary>
+    public byte[] Nulls { get; private set; } = Array.Empty<byte>();
+
+    public bool IsNull(int row) =>
+        row / 8 < Nulls.Length && (Nulls[row / 8] & (1 << (row % 8))) != 0;
+
+    public static async Task<TColumn> ReadAsync(TProtocol iprot, CancellationToken ct)
+    {
+        var result = new TColumn();
+        await iprot.ReadStructBeginAsync(ct).ConfigureAwait(false);
+        while (true)
+        {
+            var field = await iprot.ReadFieldBeginAsync(ct).ConfigureAwait(false);
+            if (field.Type == TType.Stop) break;
+            if (field.ID is >= 1 and <= 8 && field.Type == TType.Struct)
+            {
+                result.Kind = (TColumnKind)field.ID;
+                await result.ReadArmAsync(iprot, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await TProtocolUtil.SkipAsync(iprot, field.Type, ct).ConfigureAwait(false);
+            }
+            await iprot.ReadFieldEndAsync(ct).ConfigureAwait(false);
+        }
+        await iprot.ReadStructEndAsync(ct).ConfigureAwait(false);
+        return result;
+    }
+
+    // Every arm (TBoolColumn, TI32Column, TStringColumn, ...) is { 1: list<T> values, 2: binary nulls }.
+    private async Task ReadArmAsync(TProtocol iprot, CancellationToken ct)
+    {
+        await iprot.ReadStructBeginAsync(ct).ConfigureAwait(false);
+        while (true)
+        {
+            var field = await iprot.ReadFieldBeginAsync(ct).ConfigureAwait(false);
+            if (field.Type == TType.Stop) break;
+            switch (field.ID)
+            {
+                case 1 when field.Type == TType.List:
+                    var header = await iprot.ReadListBeginAsync(ct).ConfigureAwait(false);
+                    Values = await ReadValuesAsync(iprot, header.Count, ct).ConfigureAwait(false);
+                    await iprot.ReadListEndAsync(ct).ConfigureAwait(false);
+                    break;
+                case 2 when field.Type == TType.String:
+                    Nulls = await iprot.ReadBinaryAsync(ct).ConfigureAwait(false);
+                    break;
+                default:
+                    await TProtocolUtil.SkipAsync(iprot, field.Type, ct).ConfigureAwait(false);
+                    break;
+            }
+            await iprot.ReadFieldEndAsync(ct).ConfigureAwait(false);
+        }
+        await iprot.ReadStructEndAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task<System.Collections.IList> ReadValuesAsync(TProtocol iprot, int count, CancellationToken ct)
+    {
+        switch (Kind)
+        {
+            case TColumnKind.Bool:
+                var bools = new List<bool>(count);
+                for (var n = 0; n < count; n++) bools.Add(await iprot.ReadBoolAsync(ct).ConfigureAwait(false));
+                return bools;
+            case TColumnKind.Byte:
+                var bytes = new List<sbyte>(count);
+                for (var n = 0; n < count; n++) bytes.Add(await iprot.ReadByteAsync(ct).ConfigureAwait(false));
+                return bytes;
+            case TColumnKind.I16:
+                var shorts = new List<short>(count);
+                for (var n = 0; n < count; n++) shorts.Add(await iprot.ReadI16Async(ct).ConfigureAwait(false));
+                return shorts;
+            case TColumnKind.I32:
+                var ints = new List<int>(count);
+                for (var n = 0; n < count; n++) ints.Add(await iprot.ReadI32Async(ct).ConfigureAwait(false));
+                return ints;
+            case TColumnKind.I64:
+                var longs = new List<long>(count);
+                for (var n = 0; n < count; n++) longs.Add(await iprot.ReadI64Async(ct).ConfigureAwait(false));
+                return longs;
+            case TColumnKind.Double:
+                var doubles = new List<double>(count);
+                for (var n = 0; n < count; n++) doubles.Add(await iprot.ReadDoubleAsync(ct).ConfigureAwait(false));
+                return doubles;
+            case TColumnKind.String:
+                var strings = new List<string>(count);
+                for (var n = 0; n < count; n++) strings.Add(await iprot.ReadStringAsync(ct).ConfigureAwait(false));
+                return strings;
+            default:
+                var binaries = new List<byte[]>(count);
+                for (var n = 0; n < count; n++) binaries.Add(await iprot.ReadBinaryAsync(ct).ConfigureAwait(false));
+                return binaries;
+        }
+    }
+}
+
 /// <summary>Container for the rows/columns/Arrow batches/links of one fetch.</summary>
 [ExcludeFromCodeCoverage]
 internal sealed class TRowSet
 {
     public long StartRowOffset { get; set; }
+    public List<TColumn>? Columns { get; set; }
     public List<TSparkArrowBatch>? ArrowBatches { get; set; }
     public List<TSparkArrowResultLink>? ResultLinks { get; set; }
 
-    /// <summary>True when the server returned legacy row/column data this subset does not materialise.</summary>
-    public bool HasColumnarData { get; private set; }
+    /// <summary>True when the server returned row-based data this subset does not materialise.</summary>
+    public bool HasRowData { get; private set; }
 
     public static async Task<TRowSet> ReadAsync(TProtocol iprot, CancellationToken ct)
     {
@@ -125,10 +247,23 @@ internal sealed class TRowSet
                 case 1 when field.Type == TType.I64:
                     result.StartRowOffset = await iprot.ReadI64Async(ct).ConfigureAwait(false);
                     break;
-                case 2 when field.Type == TType.List: // rows (legacy)
-                case 3 when field.Type == TType.List: // columns (legacy)
-                    result.HasColumnarData = true;
-                    await TProtocolUtil.SkipAsync(iprot, field.Type, ct).ConfigureAwait(false);
+                case 2 when field.Type == TType.List: // rows
+                    var rows = await iprot.ReadListBeginAsync(ct).ConfigureAwait(false);
+                    result.HasRowData |= rows.Count > 0;
+                    for (var n = 0; n < rows.Count; n++)
+                    {
+                        await TProtocolUtil.SkipAsync(iprot, rows.ElementType, ct).ConfigureAwait(false);
+                    }
+                    await iprot.ReadListEndAsync(ct).ConfigureAwait(false);
+                    break;
+                case 3 when field.Type == TType.List: // columns
+                    var columns = await iprot.ReadListBeginAsync(ct).ConfigureAwait(false);
+                    result.Columns = new List<TColumn>(columns.Count);
+                    for (var n = 0; n < columns.Count; n++)
+                    {
+                        result.Columns.Add(await TColumn.ReadAsync(iprot, ct).ConfigureAwait(false));
+                    }
+                    await iprot.ReadListEndAsync(ct).ConfigureAwait(false);
                     break;
                 case 1281 when field.Type == TType.List:
                     var batches = await iprot.ReadListBeginAsync(ct).ConfigureAwait(false);

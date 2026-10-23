@@ -226,7 +226,7 @@ public sealed class BricksNetOperation : IBricksNetOperation
             .ConfigureAwait(false);
 
         ReleaseProvider();
-        _provider = ResultHandlerFactory.Create(fetch);
+        _provider = ResultHandlerFactory.Create(fetch, new ResultHandlerOptions { Lz4Compressed = fetch.Lz4Compressed });
         _backendHasMoreRows = fetch.HasMoreRows;
         if (_schema is null || fetch.Schema.Count > 0)
         {

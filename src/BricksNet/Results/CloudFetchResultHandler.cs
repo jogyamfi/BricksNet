@@ -106,7 +106,22 @@ public sealed class CloudFetchResultHandler : IResultsProvider, IDisposable
             response.EnsureSuccessStatusCode();
 
             var network = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            var arrowStream = _lz4Compressed ? Lz4Decompressor.Decode(network) : network;
+            Stream arrowStream = network;
+            if (_lz4Compressed)
+            {
+                // ArrowStreamReader reading straight from the LZ4 decoder stream sees no batches, so
+                // decompress the whole chunk first. Memory stays bounded by the download concurrency.
+                var decompressed = new MemoryStream();
+                var lz4 = Lz4Decompressor.Decode(network);
+                await using (lz4.ConfigureAwait(false))
+                {
+                    await lz4.CopyToAsync(decompressed, cancellationToken).ConfigureAwait(false);
+                }
+
+                decompressed.Position = 0;
+                arrowStream = decompressed;
+            }
+
             try
             {
                 using var reader = new ArrowStreamReader(arrowStream, leaveOpen: true);
@@ -128,8 +143,7 @@ public sealed class CloudFetchResultHandler : IResultsProvider, IDisposable
             }
             finally
             {
-                // Disposing the LZ4 stream also disposes the network stream (leaveOpen: false);
-                // for the uncompressed path arrowStream is the network stream itself.
+                // The LZ4 path already disposed the network stream; otherwise arrowStream is it.
                 await arrowStream.DisposeAsync().ConfigureAwait(false);
             }
         }
