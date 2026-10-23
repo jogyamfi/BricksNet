@@ -9,7 +9,8 @@ namespace BricksNet.EntityFrameworkCore.Query.Internal;
 /// Generates Databricks SQL from EF's relational query tree. Differences from EF's default SQL:
 /// <c>LIMIT</c>/<c>OFFSET</c> paging, <c>DIV</c> for integer division (Databricks <c>/</c> always
 /// returns a fractional result), <c>||</c> for string concatenation (<c>+</c> is arithmetic only),
-/// and <c>LATERAL</c> joins in place of <c>CROSS APPLY</c>/<c>OUTER APPLY</c>.
+/// <c>LATERAL</c> joins in place of <c>CROSS APPLY</c>/<c>OUTER APPLY</c>, and
+/// <c>any_value(...)</c> around scalar subqueries projected by a grouped <c>SELECT</c>.
 /// </summary>
 /// <remarks>
 /// This is an internal API that supports the EF Core infrastructure and is not subject to the
@@ -17,10 +18,68 @@ namespace BricksNet.EntityFrameworkCore.Query.Internal;
 /// </remarks>
 public class BricksNetQuerySqlGenerator : QuerySqlGenerator
 {
+    private readonly Stack<SelectExpression> _selects = new();
+    private bool _inGroupedProjection;
+
     /// <summary>Initialises a new instance.</summary>
     public BricksNetQuerySqlGenerator(QuerySqlGeneratorDependencies dependencies)
         : base(dependencies)
     {
+    }
+
+    /// <inheritdoc />
+    protected override Expression VisitSelect(SelectExpression selectExpression)
+    {
+        ArgumentNullException.ThrowIfNull(selectExpression);
+
+        var inGroupedProjection = _inGroupedProjection;
+        _inGroupedProjection = false;
+        _selects.Push(selectExpression);
+        try
+        {
+            return base.VisitSelect(selectExpression);
+        }
+        finally
+        {
+            _selects.Pop();
+            _inGroupedProjection = inGroupedProjection;
+        }
+    }
+
+    /// <inheritdoc />
+    protected override Expression VisitProjection(ProjectionExpression projectionExpression)
+    {
+        ArgumentNullException.ThrowIfNull(projectionExpression);
+
+        _inGroupedProjection = _selects.TryPeek(out var select) && select.GroupBy.Count > 0;
+        try
+        {
+            return base.VisitProjection(projectionExpression);
+        }
+        finally
+        {
+            _inGroupedProjection = false;
+        }
+    }
+
+    /// <summary>
+    /// Databricks rejects a correlated scalar subquery in the <c>SELECT</c> list of a grouped query
+    /// unless it is in an aggregate. EF only correlates such subqueries on the grouping key, so the
+    /// value is the same for the whole group and <c>any_value</c> returns it unchanged.
+    /// </summary>
+    protected override Expression VisitScalarSubquery(ScalarSubqueryExpression scalarSubqueryExpression)
+    {
+        ArgumentNullException.ThrowIfNull(scalarSubqueryExpression);
+
+        if (!_inGroupedProjection)
+        {
+            return base.VisitScalarSubquery(scalarSubqueryExpression);
+        }
+
+        Sql.Append("any_value(");
+        base.VisitScalarSubquery(scalarSubqueryExpression);
+        Sql.Append(")");
+        return scalarSubqueryExpression;
     }
 
     /// <summary>Generates <c>LIMIT n</c>, <c>OFFSET m</c> or both.</summary>

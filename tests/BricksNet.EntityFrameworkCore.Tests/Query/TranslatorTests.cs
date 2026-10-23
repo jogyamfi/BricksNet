@@ -161,8 +161,15 @@ public sealed class TranslatorTests : QueryTestBase
     [Fact]
     public Task Math_MaxMin_AndGreatestLeast() => AssertFilters(
         (e => Math.Max(e.Long, e.Id) > 5, "greatest(`a`.`Long`, CAST(`a`.`Id` AS BIGINT)) > 5L"),
-        (e => Math.Min(e.Double, 1.5) < 1, "least(`a`.`Double`, 1.5D) < 1D"),
+        (e => Math.Min(e.Double, 1.5) < 1, "least(`a`.`Double`, 1.5D) < 1D AND NOT (isnan(least(`a`.`Double`, 1.5D)))"),
         (e => EF.Functions.Greatest(e.Id, e.Short, 3) > 5, "greatest(`a`.`Id`, CAST(`a`.`Short` AS INT), 3) > 5"));
+
+    // Databricks orders NaN above every value; .NET ordering comparisons with NaN are false.
+    [Fact]
+    public Task FloatingPointComparisons_ExcludeNaN() => AssertFilters(
+        (e => Math.Sqrt(e.Double) > 6, "sqrt(`a`.`Double`) > 6D AND NOT (isnan(sqrt(`a`.`Double`)))"),
+        (e => e.Double <= e.Float, "`a`.`Double` <= CAST(`a`.`Float` AS DOUBLE) AND NOT (isnan(`a`.`Double`)) AND NOT (isnan(CAST(`a`.`Float` AS DOUBLE)))"),
+        (e => e.Long > 5, "`a`.`Long` > 5L"));
 
     // ---- dates and times ----
 

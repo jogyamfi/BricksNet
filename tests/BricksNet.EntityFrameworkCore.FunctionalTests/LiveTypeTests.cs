@@ -9,9 +9,15 @@ namespace BricksNet.EntityFrameworkCore.FunctionalTests;
 [Trait("Category", "E2E")]
 public sealed class LiveTypeTests(LiveDatabaseFixture fixture)
 {
-    private const long TicksPerMicrosecond = 10;
+    // Databricks stores microseconds, but the REST API's inline JSON_ARRAY results (the only format it
+    // allows with INLINE disposition) render timestamps to milliseconds. Thrift returns Arrow.
+    private static readonly long PrecisionTicks =
+        LiveTestConfiguration.UseThrift ? TimeSpan.TicksPerMicrosecond : TimeSpan.TicksPerMillisecond;
 
-    private static DateTime ToMicroseconds(DateTime value) => new(value.Ticks - (value.Ticks % TicksPerMicrosecond), value.Kind);
+    private static DateTime Truncate(DateTime value) => new(value.Ticks - (value.Ticks % PrecisionTicks), value.Kind);
+
+    private static DateTimeOffset Truncate(DateTimeOffset value) =>
+        new(value.Ticks - (value.Ticks % PrecisionTicks), value.Offset);
 
     [LiveFact]
     public async Task EveryType_RoundTrips()
@@ -38,9 +44,9 @@ public sealed class LiveTypeTests(LiveDatabaseFixture fixture)
             Assert.Equal(expected.Char, actual.Char);
             Assert.Equal(expected.Date, actual.Date);
 
-            // Databricks stores microseconds; TIMESTAMP_NTZ keeps the wall clock, TIMESTAMP the instant (read back in UTC).
-            Assert.Equal(ToMicroseconds(expected.DateTime), DateTime.SpecifyKind(actual.DateTime, DateTimeKind.Unspecified));
-            Assert.Equal(expected.DateTimeOffset.ToUniversalTime(), actual.DateTimeOffset);
+            // TIMESTAMP_NTZ keeps the wall clock, TIMESTAMP the instant (read back in UTC).
+            Assert.Equal(Truncate(expected.DateTime), DateTime.SpecifyKind(actual.DateTime, DateTimeKind.Unspecified));
+            Assert.Equal(Truncate(expected.DateTimeOffset.ToUniversalTime()), actual.DateTimeOffset);
             Assert.Equal(TimeSpan.Zero, actual.DateTimeOffset.Offset);
 
             Assert.Equal(expected.TimeOnly, actual.TimeOnly);

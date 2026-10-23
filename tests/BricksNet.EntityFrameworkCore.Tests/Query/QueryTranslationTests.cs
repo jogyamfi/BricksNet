@@ -275,6 +275,26 @@ public sealed class QueryTranslationTests : QueryTestBase
             """);
     }
 
+    [Fact]
+    public async Task GroupBy_ScalarFromFirstPerGroup_WrapsSubqueryInAnyValue()
+    {
+        await using var context = CreateContext();
+
+        await context.Orders.GroupBy(o => o.CustomerId).Select(g => g.OrderBy(o => o.Amount).First().Id).ToListAsync();
+
+        AssertSql(
+            """
+            SELECT any_value((
+                SELECT `o0`.`Id`
+                FROM `orders` AS `o0`
+                WHERE `o`.`CustomerId` = `o0`.`CustomerId`
+                ORDER BY `o0`.`Amount`
+                LIMIT 1))
+            FROM `orders` AS `o`
+            GROUP BY `o`.`CustomerId`
+            """);
+    }
+
     // ---- joins and navigations ----
 
     [Fact]

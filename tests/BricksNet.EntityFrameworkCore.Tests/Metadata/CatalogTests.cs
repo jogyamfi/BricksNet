@@ -68,8 +68,8 @@ public sealed class CatalogTests
             """
             SELECT `f`.`Currency`, `f`.`Value`
             FROM `main`.`ref`.`fx_rates` AS `f`
-            """,
-            sql.Trim());
+            """.ReplaceLineEndings("\n"),
+            sql.Trim().ReplaceLineEndings("\n"));
     }
 
     [Fact]

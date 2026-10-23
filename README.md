@@ -186,6 +186,13 @@ metadata calls, so the REST backend runs `SHOW CATALOGS` / `SHOW SCHEMAS` / `SHO
 `SHOW COLUMNS` and returns their Databricks SQL columns instead. On REST, `GetColumnsAsync` requires a
 table name and ignores the column pattern, and `%` in patterns is translated to the `*` wildcard.
 
+### Timestamp precision on REST
+
+Databricks stores timestamps to the microsecond. The REST API only allows inline results as
+`JSON_ARRAY`, which renders `TIMESTAMP` and `TIMESTAMP_NTZ` values to the **millisecond**, so REST
+without CloudFetch returns millisecond precision. Thrift, and REST with `UseCloudFetch = true`, return
+Arrow results with full microsecond precision.
+
 ---
 
 ## Logging & Telemetry
