@@ -155,12 +155,14 @@ internal sealed class ThriftSessionBackend : ISessionBackend
         {
             // Send every value as a string with an explicit type (as the JDBC driver does), so
             // BIGINT and DECIMAL values keep full precision instead of passing through double.
+            // A NULL omits the value: TSparkParameterValue is a union, and an empty one fails to
+            // decode server-side. An untyped NULL is sent as VOID.
             var (value, type) = ParameterFormatter.Format(parameter);
             mapped.Add(new TSparkParameter
             {
                 Name = parameter.Name.TrimStart(':'),
-                Type = type,
-                Value = value is null ? new TSparkParameterValue() : new TSparkParameterValue { StringValue = value },
+                Type = type ?? (value is null ? "VOID" : null),
+                Value = value is null ? null : new TSparkParameterValue { StringValue = value },
             });
         }
 

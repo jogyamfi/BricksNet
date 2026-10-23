@@ -93,7 +93,9 @@ public sealed class HttpClientBuilderExtensionsTests
 
         var client = provider.GetRequiredService<BricksNetHttpClient>();
 
-        Assert.Equal(BricksNetDefaults.ThriftUserAgent, client.DefaultRequestHeaders.UserAgent.ToString());
+        string userAgent = client.DefaultRequestHeaders.UserAgent.ToString();
+        Assert.StartsWith(BricksNetDefaults.ThriftUserAgent + " ", userAgent, StringComparison.Ordinal);
+        Assert.Contains("BricksNet.dotnet/", userAgent, StringComparison.Ordinal);
     }
 
     [Fact]

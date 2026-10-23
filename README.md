@@ -194,6 +194,13 @@ BricksNet writes structured logs via `Microsoft.Extensions.Logging` and emits Op
 
 ---
 
+## Live testing
+
+The default `dotnet test` run is offline. To run the live suites against a real (including free)
+Databricks workspace, see **[docs/LIVE_TESTING.md](docs/LIVE_TESTING.md)**.
+
+---
+
 ## License
 
 [Apache 2.0](LICENSE)
