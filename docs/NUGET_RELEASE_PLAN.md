@@ -132,6 +132,11 @@ correct URLs.
 
 ## Phase 2 — Local pack and verification
 
+> **Implemented** as [`scripts/Test-Packages.ps1`](../scripts/Test-Packages.ps1), which automates the
+> steps below. It uses `Meziantou.Framework.NuGetPackageValidation.Tool` (pinned in
+> `dotnet-tools.json`) instead of `dotnet-validate`, which has had only one release. CI runs it on
+> every PR. See [RELEASING.md](RELEASING.md).
+
 1. Pack:
    ```powershell
    dotnet pack BricksNet.sln -c Release -o ./nupkgs
@@ -163,6 +168,13 @@ correct URLs.
 ---
 
 ## Phase 3 — Release workflow (CI publishing)
+
+> **Implemented** in [`.github/workflows/release.yml`](../.github/workflows/release.yml). The
+> nuget.org and GitHub settings below are manual; see [RELEASING.md](RELEASING.md#one-time-setup).
+> Differences from the sketch below: the nuget.org username comes from the `NUGET_USER` repo
+> variable; the tag must be a version tag on a commit in `main`; the package version is checked
+> against the tag; and the attestation step is skipped while the repo is private. `--locked-mode`
+> is left out until lock files are added (Phase 5.3).
 
 Publish on a **git tag push**, using **NuGet Trusted Publishing** (GitHub OIDC). This means no
 long-lived API key is stored anywhere.
@@ -417,8 +429,8 @@ critical bugs) pointing to the replacement, and ship a fixed version.
 
 - [ ] **P0** Repo public · LICENSE · URLs fixed · nuget.org account + 2FA · SECURITY.md
 - [x] **P1** `src/Directory.Build.props` · MinVer · icon · tags · per-package readmes · package validation
-- [ ] **P2** Local pack inspected · `dotnet validate` clean · local-feed smoke test
-- [ ] **P3** Trusted publishing policy · `nuget` environment · `release.yml`
+- [x] **P2** Local pack inspected · package validation clean · local-feed smoke test (`scripts/Test-Packages.ps1`)
+- [ ] **P3** ~~`release.yml`~~ (done) · trusted publishing policy · `nuget` environment · `NUGET_USER` variable (manual, see RELEASING.md)
 - [ ] **P4** `v0.1.0-preview.1` published and verified
 - [ ] **P5** Dependabot · NuGet Audit · lock files · SHA-pinned actions + permissions · dependency review · CodeQL · secret scanning · scheduled build · SBOM · Scorecard · branch/tag protection
 - [ ] **P6** Runbook adopted

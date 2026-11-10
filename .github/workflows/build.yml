@@ -44,11 +44,17 @@ jobs:
           flags: unittests
           fail_ci_if_error: false
 
-      - name: Pack (main branch only)
-        if: github.ref == 'refs/heads/main'
-        run: |
-          dotnet pack src/BricksNet -c Release --no-build -o ./nupkgs
-          dotnet pack src/BricksNet.EntityFrameworkCore -c Release --no-build -o ./nupkgs
+      # Pack and verify on every PR so packaging problems show up before a release.
+      # Publishing happens only in release.yml, on a v* tag.
+      - name: Pack
+        run: dotnet pack BricksNet.sln -c Release --no-build -o ./nupkgs
+
+      - name: Verify packages
+        shell: pwsh
+        env:
+          # Lets the Source Link check read source files while the repo is private.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/Test-Packages.ps1 -NoPack -PackageDirectory ./nupkgs
 
       - name: Upload NuGet artifacts
         if: github.ref == 'refs/heads/main'

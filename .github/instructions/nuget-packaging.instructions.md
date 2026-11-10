@@ -101,3 +101,9 @@ These rules apply to project files and shared MSBuild configuration.
 - The version comes from git tags via MinVer (referenced in `src/Directory.Build.props`, `MinVerTagPrefix=v`). **Never set `<Version>` in a project file.** Tag `v0.1.0-preview.1` produces `0.1.0-preview.1` for every package. Untagged commits produce `0.1.0-alpha.0.<height>`.
 - All packages ship in lockstep with the same version. `BricksNet.EntityFrameworkCore` depends on the exact `BricksNet` version built alongside it.
 - CI checkouts that build or pack need full history (`fetch-depth: 0`), or MinVer cannot find the tags.
+
+## Verification and Release
+
+- After any change to packaging, run `./scripts/Test-Packages.ps1`. It packs, inspects package contents and dependencies, validates Source Link, determinism and symbols, and smoke-tests both packages from a local feed. CI runs it on every PR.
+- New build- or test-only packages must be added to the forbidden-dependency list in `scripts/Test-Packages.ps1`. A new shipped file must be added to its allowed-file list.
+- Publishing happens only through `.github/workflows/release.yml`, on a `v*` tag on `main`. Never run `dotnet nuget push` by hand. See `docs/RELEASING.md`.

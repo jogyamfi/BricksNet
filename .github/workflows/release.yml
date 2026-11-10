@@ -1,0 +1,144 @@
+name: Release
+
+# Publishes BricksNet and BricksNet.EntityFrameworkCore to nuget.org when a version tag is pushed.
+# The version comes from the tag via MinVer: v0.1.0-preview.1 -> 0.1.0-preview.1.
+# One-time setup (nuget.org trusted publishing, the `nuget` environment, NUGET_USER) is described
+# in docs/RELEASING.md.
+
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build, test and pack
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # MinVer reads the tag, Source Link the commit; both need full history.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the tag
+        id: version
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not a version tag like v1.2.3 or v1.2.3-preview.1."
+            exit 1
+          fi
+          # Only release commits that are already on main.
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tagged commit $GITHUB_SHA is not on main. Tag a commit on main."
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore BricksNet.sln
+
+      - name: Build
+        run: dotnet build BricksNet.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test BricksNet.sln -c Release --no-build --filter "Category!=E2E"
+
+      - name: Pack
+        run: dotnet pack BricksNet.sln -c Release --no-build -o nupkgs
+
+      - name: Check the package version matches the tag
+        run: |
+          for id in BricksNet BricksNet.EntityFrameworkCore; do
+            if [[ ! -f "nupkgs/$id.${{ steps.version.outputs.version }}.nupkg" ]]; then
+              echo "::error::Expected nupkgs/$id.${{ steps.version.outputs.version }}.nupkg. Found:"; ls nupkgs
+              exit 1
+            fi
+          done
+
+      - name: Verify packages
+        shell: pwsh
+        env:
+          # Lets the Source Link check read source files while the repo is private.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/Test-Packages.ps1 -NoPack -PackageDirectory nupkgs
+
+      - name: Upload packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nupkgs
+          path: nupkgs/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to nuget.org
+    needs: build
+    runs-on: ubuntu-latest
+    # Required reviewers on this environment make every publish wait for manual approval.
+    environment:
+      name: nuget
+      url: https://www.nuget.org/packages/BricksNet/${{ needs.build.outputs.version }}
+    permissions:
+      contents: write       # create the GitHub Release
+      id-token: write       # OIDC token for NuGet trusted publishing and build attestations
+      attestations: write
+
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nupkgs
+          path: nupkgs
+
+      - name: Attest build provenance
+        # Artifact attestations need a public repo (or GitHub Enterprise Cloud).
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: "nupkgs/*.nupkg"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Log in to nuget.org (trusted publishing)
+        id: nuget
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push to nuget.org
+        # The .snupkg next to each .nupkg goes to the symbol server automatically.
+        # --skip-duplicate makes a re-run safe after a partial failure.
+        run: >
+          dotnet nuget push "nupkgs/*.nupkg"
+          --api-key "${{ steps.nuget.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$GITHUB_REF_NAME")
+          if [[ "${{ needs.build.outputs.prerelease }}" == "true" ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" nupkgs/* "${flags[@]}"

@@ -40,3 +40,6 @@ appSettings.User.json
 
 # Live test credentials (see docs/LIVE_TESTING.md)
 scripts/live-tests.env
+
+# Local pack output (scripts/Test-Packages.ps1)
+nupkgs/
