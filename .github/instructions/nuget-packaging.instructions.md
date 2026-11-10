@@ -1,5 +1,5 @@
 ---
-applyTo: "**/src/BricksNet/*.csproj, **/Directory.Build.props, **/Directory.Packages.props"
+applyTo: "**/src/**/*.csproj, **/Directory.Build.props, **/Directory.Packages.props"
 ---
 
 # NuGet Packaging (BricksNet)
@@ -8,7 +8,9 @@ These rules apply to project files and shared MSBuild configuration.
 
 ## Property Placement
 
-- Put all shared MSBuild properties in `Directory.Build.props` at the solution root. Put project-specific properties in the individual `.csproj`.
+- Put repo-wide MSBuild properties (TFM, nullable, analyzers) in `Directory.Build.props` at the solution root.
+- Put packaging properties shared by every shipped package in `src/Directory.Build.props`. It imports the root file and applies only to `src/`, so tests and samples are unaffected.
+- Put only package-specific properties (`PackageId`, `Description`, `PackageTags`) in the individual `.csproj`.
 
   ```xml
   <!-- Directory.Build.props -->
@@ -48,11 +50,12 @@ These rules apply to project files and shared MSBuild configuration.
 
 ## Required Packaging Properties
 
-- `BricksNet.csproj` must set: `PackageId`, `Version`, `Authors`, `Company`, `Description`, `PackageLicenseExpression` (SPDX), `PackageReadmeFile`, `PackageProjectUrl`, `RepositoryUrl`, `RepositoryType=git`.
+- `src/Directory.Build.props` sets: `Authors`, `Company`, `Copyright`, `PackageLicenseExpression` (SPDX), `PackageProjectUrl`, `RepositoryUrl`, `RepositoryType=git`, `PackageIcon` (`assets/icon.png`), `PackageReadmeFile`, `PackageReleaseNotes`, `EnablePackageValidation`.
+- Each packable `.csproj` under `src/` sets `PackageId`, `Description` and `PackageTags`, and has its own `README.md` next to it. Package readmes use absolute URLs only, because nuget.org cannot resolve relative links or images.
 
 ## Source Link
 
-- Add `Microsoft.SourceLink.GitHub` (with `PrivateAssets="all"`) for debugger source-stepping. It requires `EmbedUntrackedSources=true` and `Deterministic=true`.
+- `Microsoft.SourceLink.GitHub` is referenced once, in `src/Directory.Build.props` (with `PrivateAssets="all"`), for debugger source-stepping. It requires `EmbedUntrackedSources=true` and `Deterministic=true`.
 
   ```xml
   <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
@@ -95,4 +98,6 @@ These rules apply to project files and shared MSBuild configuration.
 
 ## Versioning
 
-- Keep `<Version>` in `Directory.Build.props` as the single source of truth; override pre-release with `VersionSuffix` (e.g., `-alpha`, `-beta`). Use MinVer or GitVersion for automated bumping in CI.
+- The version comes from git tags via MinVer (referenced in `src/Directory.Build.props`, `MinVerTagPrefix=v`). **Never set `<Version>` in a project file.** Tag `v0.1.0-preview.1` produces `0.1.0-preview.1` for every package. Untagged commits produce `0.1.0-alpha.0.<height>`.
+- All packages ship in lockstep with the same version. `BricksNet.EntityFrameworkCore` depends on the exact `BricksNet` version built alongside it.
+- CI checkouts that build or pack need full history (`fetch-depth: 0`), or MinVer cannot find the tags.

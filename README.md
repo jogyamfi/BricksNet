@@ -1,7 +1,7 @@
 # BricksNet
 <!---
 [![NuGet](https://img.shields.io/nuget/v/BricksNet.svg)](https://www.nuget.org/packages/BricksNet)
-[![Build](https://github.com/your-org/bricksnet/actions/workflows/build.yml/badge.svg)](https://github.com/your-org/bricksnet/actions/workflows/build.yml)
+[![Build](https://github.com/jogyamfi/BricksNet/actions/workflows/build.yml/badge.svg)](https://github.com/jogyamfi/BricksNet/actions/workflows/build.yml)
 -->
 **BricksNet** is a .NET 10 Databricks SQL client library providing three complementary surfaces:
 
