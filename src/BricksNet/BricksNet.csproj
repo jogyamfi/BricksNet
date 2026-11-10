@@ -7,22 +7,10 @@
     <!-- Suppress missing XML doc warnings until public API is defined in Phase 2+ -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
 
-    <!-- NuGet package metadata (Phase 12) -->
+    <!-- NuGet package metadata. Shared properties and the version come from src/Directory.Build.props. -->
     <PackageId>BricksNet</PackageId>
-    <Version>0.1.0-alpha</Version>
-    <Authors>James Gyamfi</Authors>
-    <Company>JamesGyamfi</Company>
-    <Description>BricksNet — Databricks SQL client library for .NET 10</Description>
-    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageProjectUrl>https://github.com/your-org/bricksnet</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/your-org/bricksnet</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <Deterministic>true</Deterministic>
-    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Description>Databricks SQL client for .NET 10: a fluent async API and an ADO.NET provider (Dapper-compatible) for SQL Warehouses (REST) and all-purpose clusters (Thrift), with Arrow, CloudFetch, PAT and OAuth support.</Description>
+    <PackageTags>databricks;databricks-sql;sql;ado.net;dapper;spark;delta;lakehouse;arrow;thrift</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -50,16 +38,6 @@
     <!-- Generated Thrift code is hand-ported (see Backends/Thrift/Generated/README) and
          excluded from style/doc analysis to mirror compiler-generated output. -->
     <None Remove="Backends\Thrift\Generated\**" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Include the solution-level README in the NuGet package. -->
-    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Source Link: enables stepping into BricksNet source from NuGet (build-time only). -->
-    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

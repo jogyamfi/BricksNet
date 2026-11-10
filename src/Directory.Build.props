@@ -1,0 +1,49 @@
+<Project>
+  <!--
+    Shared settings for the shipped libraries under src/ (BricksNet, BricksNet.EntityFrameworkCore).
+    Tests and samples do not import this file. Repo-wide settings live in the root Directory.Build.props.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!-- NuGet package metadata shared by every package. -->
+    <Authors>James Gyamfi</Authors>
+    <Company>JamesGyamfi</Company>
+    <Copyright>Copyright (c) James Gyamfi</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/jogyamfi/BricksNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/jogyamfi/BricksNet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageIcon>icon.png</PackageIcon>
+    <!-- Each project packs its own README.md (absolute links only: nuget.org cannot resolve relative ones). -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>https://github.com/jogyamfi/BricksNet/blob/main/CHANGELOG.md</PackageReleaseNotes>
+
+    <!-- Symbols + Source Link + reproducible builds. -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- Fails pack on package-shape mistakes. After the first stable release, also set
+         PackageValidationBaselineVersion to catch breaking API changes. -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+
+    <!-- Versioning: MinVer derives the version from the latest v* git tag, so both packages
+         always ship the same version (tag v0.1.0-preview.1 → 0.1.0-preview.1). Untagged commits
+         get 0.1.0-alpha.0.<height>. Do not set <Version> in the project files. -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerMinimumMajorMinor>0.1</MinVerMinimumMajorMinor>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\assets\icon.png" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Build-time only; neither ships as a package dependency. -->
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
+    <PackageReference Include="MinVer" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
