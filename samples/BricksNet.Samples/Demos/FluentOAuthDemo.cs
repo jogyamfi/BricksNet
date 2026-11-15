@@ -10,9 +10,8 @@ namespace BricksNet.Samples.Demos;
 /// The first call opens a browser window for the user to authorise the application.
 /// </summary>
 /// <remarks>
-/// The README's quick-start shows a non-existent <c>OAuthClientCredentialsOptions</c> type.
-/// The library implements PKCE (browser redirect) via <see cref="OAuthOptions"/>, not
-/// machine-to-machine client credentials. Update the README OAuth section accordingly.
+/// The library implements PKCE (browser redirect) via <see cref="OAuthOptions"/>. OAuth
+/// machine-to-machine client credentials are not supported.
 /// </remarks>
 public static class FluentOAuthDemo
 {

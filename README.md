@@ -1,8 +1,14 @@
 # BricksNet
-<!---
-[![NuGet](https://img.shields.io/nuget/v/BricksNet.svg)](https://www.nuget.org/packages/BricksNet)
+
 [![Build](https://github.com/jogyamfi/BricksNet/actions/workflows/build.yml/badge.svg)](https://github.com/jogyamfi/BricksNet/actions/workflows/build.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+<!-- Enable after the first release to nuget.org:
+[![NuGet](https://img.shields.io/nuget/v/BricksNet.svg)](https://www.nuget.org/packages/BricksNet)
 -->
+
+> **Status: preview.** The API can still change before 1.0. BricksNet is an independent,
+> community-maintained project. It is not affiliated with, endorsed by or supported by Databricks, Inc.
+
 **BricksNet** is a .NET 10 Databricks SQL client library providing three complementary surfaces:
 
 - **Fluent async API** — `BricksNetClient → BricksNetSession → BricksNetOperation`
@@ -14,9 +20,12 @@ All surfaces target SQL Warehouses (REST backend) and All-purpose clusters (Thri
 ---
 
 ## Installation
-This is not published yet and so not yet on Nuget
+
+The packages are not on nuget.org yet. Until the first preview release, build from source
+(`dotnet build BricksNet.sln`) and reference the projects under `src/`. After the release:
+
 ```shell
-dotnet add package BricksNet
+dotnet add package BricksNet --prerelease
 ```
 
 ---
@@ -81,10 +90,10 @@ await using var session = await client.OpenSessionAsync();
 Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;Token=<pat>
 ```
 
-For OAuth:
-```
-Host=...;HttpPath=...;ClientId=<id>;ClientSecret=<secret>
-```
+Connection strings authenticate with a personal access token. OAuth client credentials
+(machine-to-machine) are not supported. To use OAuth PKCE with ADO.NET, build the client with
+`OAuthOptions` (see above) and pass it to the `BricksNetConnection` constructor that takes a client
+factory.
 
 Add `KeepSessionAlive=true` to keep the Databricks session open across `Close()`/`Open()` cycles
 (it is released on `Dispose()`), which avoids starting a new session each time the connection opens.
@@ -208,6 +217,15 @@ Databricks workspace, see **[docs/LIVE_TESTING.md](docs/LIVE_TESTING.md)**.
 
 ---
 
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and send changes. To report a
+vulnerability, follow [SECURITY.md](SECURITY.md) and do not open a public issue.
+
+---
+
 ## License
 
-[Apache 2.0](LICENSE)
+[Apache 2.0](LICENSE). Third-party attributions are in [NOTICE](NOTICE).
+
+Databricks is a trademark of Databricks, Inc. This project is not affiliated with Databricks, Inc.

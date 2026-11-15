@@ -1,0 +1,55 @@
+name: Bug report
+description: Something in BricksNet does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problem? Do not file it here. See SECURITY.md.
+        Remove tokens, real hostnames and private data from anything you paste.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Fluent API
+        - ADO.NET provider
+        - EF Core provider
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options:
+        - REST (SQL warehouse)
+        - REST with CloudFetch
+        - Thrift
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: BricksNet version
+      placeholder: 0.1.0-preview.1 or a commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you got. Include the full exception with its stack trace.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest code and SQL (including table definitions) that shows the problem.
+      render: csharp
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: .NET version, OS, and for EF Core the EF Core version.

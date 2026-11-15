@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Fluent async API: `BricksNetClient`, `BricksNetSession`, `BricksNetOperation`.
-- ADO.NET provider: `BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`, `BricksNetParameter`, `BricksNetTransaction`.
+- ADO.NET provider: `BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`, `BricksNetParameter`.
 - REST backend (Databricks SQL Exec API) with Arrow IPC, inline-JSON, and CloudFetch result modes.
 - Thrift backend (TCLIService binary protocol) for All-purpose clusters.
 - LZ4 decompression for compressed result payloads.
-- Authentication: Personal Access Token (PAT), OAuth Client Credentials (M2M), OAuth Authorization Code + PKCE.
+- Authentication: Personal Access Token (PAT) and OAuth Authorization Code + PKCE.
 - `IHttpClientFactory`-based HTTP transport with retry (HTTP 429/503) and configurable timeout.
 - `ILogger<T>` structured logging and OpenTelemetry `ActivitySource` spans.
 - `AddBricksNet` extension for `IServiceCollection` DI registration.
