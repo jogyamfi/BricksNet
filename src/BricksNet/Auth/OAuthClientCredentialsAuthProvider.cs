@@ -29,6 +29,7 @@ internal sealed class OAuthClientCredentialsAuthProvider : IAuthProvider, ISuppo
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
 
+    /// <summary>Creates a provider for one service principal and token endpoint.</summary>
     /// <param name="tokenEndpoint">The workspace token endpoint, <c>https://&lt;host&gt;/oidc/v1/token</c>.</param>
     /// <param name="clientId">The service principal's OAuth client ID (application ID).</param>
     /// <param name="clientSecret">The service principal's OAuth secret.</param>
@@ -132,12 +133,12 @@ internal sealed class OAuthClientCredentialsAuthProvider : IAuthProvider, ISuppo
                     : $" ({code})";
             }
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-        }
-        catch (NotSupportedException)
-        {
-            // Not a JSON body.
+            // The body is not JSON (JsonException) or not declared as JSON (NotSupportedException),
+            // e.g. an HTML page from a proxy. The status code alone still describes the failure,
+            // and the caller throws with it, so there is nothing more to report here.
+            return string.Empty;
         }
 
         return string.Empty;

@@ -136,7 +136,7 @@ public class BricksNetConnectionStringBuilderTests
     [Fact]
     public void ToClientOptions_TrustedCertificatesPathMissing_ThrowsBricksNetException()
     {
-        string path = Path.Combine(Path.GetTempPath(), $"bricksnet-missing-{Guid.NewGuid():N}.pem");
+        string path = Path.Join(Path.GetTempPath(), $"bricksnet-missing-{Guid.NewGuid():N}.pem");
         var builder = new BricksNetConnectionStringBuilder($"Host=h;HttpPath=/p;TrustedCertificatesPath={path}");
 
         var ex = Assert.Throws<BricksNetException>(() => builder.ToClientOptions(out _));

@@ -24,7 +24,7 @@ public sealed class OAuthClientCredentialsAuthProviderTests
     {
         AuthenticationHeaderValue? capturedAuth = null;
         string? capturedBody = null;
-        var mockHttp = new MockHttpMessageHandler();
+        using var mockHttp = new MockHttpMessageHandler();
         mockHttp
             .When(HttpMethod.Post, TokenEndpoint)
             .Respond(async req =>
@@ -49,7 +49,7 @@ public sealed class OAuthClientCredentialsAuthProviderTests
     [Fact]
     public async Task GetTokenWithExpiryAsync_ReportsExpiryFromExpiresIn()
     {
-        var mockHttp = new MockHttpMessageHandler();
+        using var mockHttp = new MockHttpMessageHandler();
         mockHttp.When(HttpMethod.Post, TokenEndpoint)
             .Respond(_ => Json(HttpStatusCode.OK, "{\"access_token\":\"t\",\"expires_in\":3600}"));
         using HttpClient httpClient = mockHttp.ToHttpClient();
@@ -63,7 +63,7 @@ public sealed class OAuthClientCredentialsAuthProviderTests
     [Fact]
     public async Task GetTokenAsync_Rejected_ThrowsWithOAuthError_ButNotTheSecret()
     {
-        var mockHttp = new MockHttpMessageHandler();
+        using var mockHttp = new MockHttpMessageHandler();
         mockHttp.When(HttpMethod.Post, TokenEndpoint)
             .Respond(_ => Json(
                 HttpStatusCode.Unauthorized,
@@ -80,7 +80,7 @@ public sealed class OAuthClientCredentialsAuthProviderTests
     [Fact]
     public async Task GetTokenAsync_RejectedWithNonJsonBody_StillThrowsClearly()
     {
-        var mockHttp = new MockHttpMessageHandler();
+        using var mockHttp = new MockHttpMessageHandler();
         mockHttp.When(HttpMethod.Post, TokenEndpoint)
             .Respond(HttpStatusCode.BadGateway, "text/html", "<html>bad gateway</html>");
         using HttpClient httpClient = mockHttp.ToHttpClient();
@@ -93,7 +93,7 @@ public sealed class OAuthClientCredentialsAuthProviderTests
     [Fact]
     public async Task GetTokenAsync_ResponseWithoutAccessToken_Throws()
     {
-        var mockHttp = new MockHttpMessageHandler();
+        using var mockHttp = new MockHttpMessageHandler();
         mockHttp.When(HttpMethod.Post, TokenEndpoint).Respond(_ => Json(HttpStatusCode.OK, "{\"expires_in\":3600}"));
         using HttpClient httpClient = mockHttp.ToHttpClient();
 
@@ -121,7 +121,7 @@ public sealed class OAuthClientCredentialsAuthProviderTests
     public async Task ThroughFactory_TokenIsCachedUntilNearExpiry()
     {
         int requests = 0;
-        var mockHttp = new MockHttpMessageHandler();
+        using var mockHttp = new MockHttpMessageHandler();
         mockHttp.When(HttpMethod.Post, TokenEndpoint).Respond(_ =>
         {
             requests++;
