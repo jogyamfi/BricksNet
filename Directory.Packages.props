@@ -5,10 +5,10 @@
 
   <ItemGroup>
     <!-- HTTP / DI / Logging -->
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="11.0.0" />
     <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="10.0.12" />
 
     <!-- Backends and result handling -->
@@ -19,12 +19,12 @@
 
     <!-- EF Core provider (BricksNet.EntityFrameworkCore) -->
     <!-- Upper bound: the provider builds on EF "internal" APIs, which can change in a major release. -->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="[10.0.12, 11.0.0)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="[10.0.15, 11.0.0)" />
 
     <!-- Samples console app -->
     <PackageVersion Include="Dapper" Version="2.1.35" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="11.0.0" />
 
     <!-- Packaging -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.401" />
