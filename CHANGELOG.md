@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-preview.1] - 2026-11-16
+
 ### Added
 - Fluent async API: `BricksNetClient`, `BricksNetSession`, `BricksNetOperation`.
 - ADO.NET provider: `BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`, `BricksNetParameter`.
@@ -176,4 +178,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are documented.
 - Samples: an unknown demo name reports an error instead of silently running `FluentPat`.
 
-[Unreleased]: https://github.com/your-org/bricksnet/compare/HEAD...HEAD
+[Unreleased]: https://github.com/jogyamfi/BricksNet/compare/v0.1.0-preview.1...HEAD
+[0.1.0-preview.1]: https://github.com/jogyamfi/BricksNet/releases/tag/v0.1.0-preview.1
