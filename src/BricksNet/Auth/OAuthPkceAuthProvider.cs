@@ -28,7 +28,7 @@ namespace BricksNet.Auth;
 ///   after use.</item>
 /// </list>
 /// </remarks>
-public sealed class OAuthPkceAuthProvider : IAuthProvider, ISupportsTokenExpiry
+internal sealed class OAuthPkceAuthProvider : IAuthProvider, ISupportsTokenExpiry
 {
     private readonly OAuthOptions _options;
     private readonly HttpClient _httpClient;

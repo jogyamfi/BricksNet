@@ -77,7 +77,7 @@ jobs:
       - name: Verify packages
         shell: pwsh
         env:
-          # Lets the Source Link check read source files while the repo is private.
+          # Authenticates the Source Link check's requests to GitHub, avoiding anonymous rate limits.
           GITHUB_TOKEN: ${{ github.token }}
         run: ./scripts/Test-Packages.ps1 -NoPack -PackageDirectory nupkgs
 

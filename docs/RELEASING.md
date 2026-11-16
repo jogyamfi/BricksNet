@@ -70,7 +70,9 @@ Studio needs to be signed in to GitHub while the repo is private.
 ## Cut a release
 
 1. Make sure `main` is green, and move the `CHANGELOG.md` `[Unreleased]` entries under the new
-   version heading.
+   version heading. Then move every line except `#nullable enable` from
+   `src/BricksNet/PublicAPI.Unshipped.txt` to the end of `PublicAPI.Shipped.txt`, so the next
+   release's API changes show up as new unshipped entries. Commit both through a pull request.
 2. Tag a commit **on `main`**, then push the tag:
 
    ```powershell
@@ -92,6 +94,10 @@ Studio needs to be signed in to GitHub while the repo is private.
 
 **Re-running a failed release** is safe: the push uses `--skip-duplicate`. If the GitHub Release
 already exists, delete it before re-running the publish job.
+
+**After the first stable (non-prerelease) release**, set `PackageValidationBaselineVersion` in
+`src/Directory.Build.props` to that version. Package validation then fails the build when a later
+version removes or changes public API that the baseline shipped.
 
 **A bad release** can't be deleted. Unlist it on nuget.org, mark it deprecated pointing to the fixed
 version, and release that version.

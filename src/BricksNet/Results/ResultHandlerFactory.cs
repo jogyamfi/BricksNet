@@ -6,7 +6,7 @@ namespace BricksNet.Results;
 /// Selects and constructs the appropriate <see cref="IResultsProvider"/> for a backend
 /// <see cref="FetchResult"/> based on its <see cref="ResultFormat"/>.
 /// </summary>
-public static class ResultHandlerFactory
+internal static class ResultHandlerFactory
 {
     private static readonly HttpClient SharedDownloadClient = new();
 

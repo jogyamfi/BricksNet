@@ -6,7 +6,7 @@ namespace BricksNet.Results;
 /// Decorates any <see cref="IResultsProvider"/> and caps the total number of rows surfaced across
 /// chunk boundaries. A non-positive limit means "unlimited" and passes chunks through unchanged.
 /// </summary>
-public sealed class ResultSlicer : IResultsProvider
+internal sealed class ResultSlicer : IResultsProvider
 {
     private readonly IResultsProvider _inner;
     private readonly long _maxRows;

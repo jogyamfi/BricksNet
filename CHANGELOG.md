@@ -23,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CI: build, test (non-E2E), coverage upload, and Release pack.
 - GitHub Actions security workflow: vulnerable-package scan + OWASP Dependency-Check.
 - `IBricksNetOperation.WaitForCompletionAsync` — waits for a terminal state without fetching rows.
-- `FetchResult.HasMoreRows` — backends signal further result pages.
 - `BricksNetClientOptions.UseCloudFetch` / `UseCloudFetch` connection-string keyword — REST results via
   `EXTERNAL_LINKS` + `ARROW_STREAM`, required for results over 25 MiB.
 - `IBricksNetOperation.GetSchemaAsync` — server-reported column metadata.
@@ -106,8 +105,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BricksNetConnection.KeptSessionIdleTimeout` (`KeptSessionIdleTimeoutSeconds` keyword, default 15
   minutes): a session kept by `KeepSessionAlive` that has been idle longer is replaced on the next open
   rather than reused after the server may have expired it.
+- OAuth client credentials (machine-to-machine) for Databricks service principals:
+  `AuthType.OAuthClientCredentials` with `BricksNetClientOptions.OAuthClientId`, and the `ClientId` /
+  `ClientSecret` connection-string keywords. Tokens come from the workspace `/oidc/v1/token` endpoint
+  and are renewed shortly before they expire.
+- OAuth token requests (PKCE and client credentials) now use the client's proxy and TLS settings.
+- Custom authentication: `BricksNetClient(options, IAuthProvider)` and
+  `AddBricksNet(options, Func<IServiceProvider, IAuthProvider>)`, for tokens BricksNet does not obtain
+  itself, such as Microsoft Entra ID tokens.
+- The public API is tracked with `Microsoft.CodeAnalysis.PublicApiAnalyzers`
+  (`src/BricksNet/PublicAPI.*.txt`), and XML documentation is required for every public member.
+- `TrustedCertificatesPath` connection-string keyword: a PEM file of root certificates to trust instead
+  of the system store, for TLS-inspecting proxies and private certificate authorities. It sets
+  `SslOptions.CustomTrustStore`.
 
 ### Changed
+- **Breaking:** implementation types are no longer public: the result handlers and `ResultSlicer`,
+  `FetchResult`, `ExternalLink`, `ResultFormat`, the backend contracts (`IBackend`, `ISessionBackend`,
+  `IOperationBackend`, `IResultsProvider`, `BackendSessionOptions`, `FetchOptions`), the HTTP pipeline
+  (`BricksNetHttpClient`, `BricksNetHttpClientOptions`, `AddBricksNetHttpClient`), the built-in auth
+  providers and token cache (`AuthProviderFactory`, `PatAuthProvider`, `OAuthPkceAuthProvider`,
+  `CachedTokenProvider`, `OAuthTokenCache`, `ITokenCache`) and the logging and span helpers.
+  `BricksNetActivitySource` keeps only `SourceName`. Use the `IAuthProvider` overloads above in place of
+  the `BricksNetClient(options, BricksNetHttpClient)` constructor.
+- **Breaking:** removed `TelemetryOptions.Enabled` and `TelemetryOptions.DiagnosticListenerName`, which
+  had no effect.
+- **Breaking:** `SslOptions.AllowSelfSignedCerts` (and the `AllowSelfSignedCerts` keyword) is renamed
+  `SkipHostnameVerification`, which is what it does. It never allowed self-signed certificates; trust
+  those with `CustomTrustStore` / `TrustedCertificatesPath`.
 - **Breaking:** `TIMESTAMP_NTZ` values are returned as `DateTime` (`Kind = Unspecified`) instead of
   `DateTimeOffset`, matching their wall-clock meaning. `TIMESTAMP` is still `DateTimeOffset`.
 - **Breaking:** `BricksNetParameter.DbType` is inferred from `Value` until assigned (previously always
@@ -121,6 +146,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   offset, respectively.
 
 ### Fixed
+- TLS with `CustomTrustStore`: intermediates sent by the server are now used to build the chain, so a
+  certificate issued by an intermediate under a trusted root is accepted. They are never trust anchors.
 - REST: results were silently truncated to `MaxRows` (default 10,000) because it was sent as `row_limit`.
 - REST: only the first result chunk was read; all chunks are now followed via `next_chunk_index`.
 - Thrift: only the first `FETCH_NEXT` page was read; pages are now fetched while `hasMoreRows` is set.

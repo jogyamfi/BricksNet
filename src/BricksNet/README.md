@@ -7,7 +7,8 @@ A Databricks SQL client for .NET 10, with two ways to use it:
 
 Both work against **SQL Warehouses** (REST backend) and **all-purpose clusters** (Thrift backend).
 Results arrive as Arrow, inline JSON or CloudFetch (for results over 25 MiB). Authentication supports
-personal access tokens and OAuth authorization code with PKCE.
+personal access tokens, OAuth client credentials (service principals, M2M), OAuth authorization code
+with PKCE, and any token source you plug in through `IAuthProvider`.
 
 For an Entity Framework Core provider, see
 [BricksNet.EntityFrameworkCore](https://www.nuget.org/packages/BricksNet.EntityFrameworkCore).

@@ -11,7 +11,7 @@ namespace BricksNet.Auth;
 /// CR/LF characters to prevent HTTP header injection when it is later set on the
 /// <c>Authorization</c> header.
 /// </remarks>
-public sealed class PatAuthProvider : IAuthProvider
+internal sealed class PatAuthProvider : IAuthProvider
 {
     private readonly string _token;
 

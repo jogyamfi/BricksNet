@@ -72,6 +72,11 @@ These rules apply to project files and shared MSBuild configuration.
 
 - Set `GenerateDocumentationFile=true` in `BricksNet.csproj`. Suppress `CS1591` (missing XML comment) only in test projects, never in the library.
 
+## Public API
+
+- `BricksNet.csproj` uses `Microsoft.CodeAnalysis.PublicApiAnalyzers`. A new or changed public member must be added to `src/BricksNet/PublicAPI.Unshipped.txt` (the IDE code fix for `RS0016` does this). Prefer `internal` for anything a user does not need to call, configure or mock: making a type public later is not a breaking change, but hiding one is.
+- `BricksNet.EntityFrameworkCore` follows the EF Core convention instead: implementation types are public in `*.Internal` namespaces, and EF's `EF1001` analyzer warns consumers who use them.
+
 ## Deterministic / CI Builds
 
 - Set `Deterministic=true` unconditionally and `ContinuousIntegrationBuild=true` when the `CI` environment variable is set, for reproducible package hashes.
@@ -82,6 +87,7 @@ These rules apply to project files and shared MSBuild configuration.
 
 ## Excluding Content
 
+- `LICENSE` and `NOTICE` from the repository root are packed into every package by `src/Directory.Build.props`.
 - Do not embed appsettings, connection strings, or test fixtures in the package. Exclude with:
 
   ```xml

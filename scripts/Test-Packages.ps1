@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Packs BricksNet and verifies the packages before they are published (release plan, Phase 2).
+    Packs BricksNet and verifies the packages before they are published (see docs/RELEASING.md).
 
 .DESCRIPTION
     Steps, in order (any failure stops the script with a non-zero exit code):
@@ -56,7 +56,7 @@ $repositoryUrl = 'https://github.com/jogyamfi/BricksNet'
 $forbiddenDependencies = @(
     'MinVer', 'Microsoft.SourceLink.*', 'Microsoft.NET.Test.Sdk', 'xunit*', 'coverlet.*', 'Moq',
     'RichardSzalay.MockHttp', 'Microsoft.AspNetCore.Mvc.Testing', 'Dapper', 'Microsoft.Extensions.Hosting',
-    'Microsoft.Extensions.Logging.Console')
+    'Microsoft.Extensions.Logging.Console', 'Microsoft.CodeAnalysis.PublicApiAnalyzers')
 
 $failures = New-Object System.Collections.Generic.List[string]
 function Fail([string] $message) { $script:failures.Add($message); Write-Host "  FAIL $message" -ForegroundColor Red }
@@ -119,15 +119,16 @@ foreach ($id in $ids) {
     $snupkg = Join-Path $PackageDirectory "$id.$version.snupkg"
     if (Test-Path $snupkg) { Pass 'symbols package (.snupkg) present' } else { Fail "$id has no .snupkg" }
 
-    # Files: only the library, its XML docs, the readme, the icon and NuGet's own bookkeeping.
+    # Files: only the library, its XML docs, the readme, the icon, the licence and NOTICE, and NuGet's
+    # own bookkeeping.
     $allowed = @(
-        "lib/net10.0/$id.dll", "lib/net10.0/$id.xml", 'README.md', 'icon.png', "$id.nuspec",
-        '[Content_Types].xml', '_rels/.rels')
+        "lib/net10.0/$id.dll", "lib/net10.0/$id.xml", 'README.md', 'icon.png', 'LICENSE', 'NOTICE',
+        "$id.nuspec", '[Content_Types].xml', '_rels/.rels')
     $unexpected = @($p.Entries | Where-Object {
             $allowed -notcontains $_ -and $_ -notlike 'package/services/metadata/core-properties/*.psmdcp' })
     if ($unexpected.Count -gt 0) { Fail "$id contains unexpected files: $($unexpected -join ', ')" }
-    else { Pass 'contents: dll, xml docs, readme, icon only' }
-    foreach ($required in "lib/net10.0/$id.dll", "lib/net10.0/$id.xml", 'README.md', 'icon.png') {
+    else { Pass 'contents: dll, xml docs, readme, icon, LICENSE, NOTICE only' }
+    foreach ($required in "lib/net10.0/$id.dll", "lib/net10.0/$id.xml", 'README.md', 'icon.png', 'LICENSE', 'NOTICE') {
         if ($p.Entries -notcontains $required) { Fail "$id is missing $required" }
     }
 

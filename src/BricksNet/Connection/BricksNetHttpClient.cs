@@ -11,7 +11,7 @@ namespace BricksNet.Connection;
 /// Cross-cutting concerns (proxy, auth-header injection, retry, TLS) are applied by the handler
 /// pipeline configured in <see cref="HttpClientBuilderExtensions"/>, not here.
 /// </remarks>
-public sealed class BricksNetHttpClient
+internal sealed class BricksNetHttpClient
 {
     /// <summary>Logical name of the typed/named <see cref="System.Net.Http.HttpClient"/> registration.</summary>
     public const string HttpClientName = "BricksNet";

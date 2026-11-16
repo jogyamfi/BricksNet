@@ -44,9 +44,9 @@ public sealed class HttpClientBuilderExtensionsTests
     }
 
     [Fact]
-    public void AddBricksNetHttpClient_AllowSelfSignedCerts_BuildsClient()
+    public void AddBricksNetHttpClient_SkipHostnameVerification_BuildsClient()
     {
-        using var provider = BuildProvider(Options(new SslOptions { AllowSelfSignedCerts = true }));
+        using var provider = BuildProvider(Options(new SslOptions { SkipHostnameVerification = true }));
 
         var client = provider.GetRequiredService<BricksNetHttpClient>();
 
@@ -62,7 +62,7 @@ public sealed class HttpClientBuilderExtensionsTests
         using var provider = BuildProvider(Options(new SslOptions
         {
             CustomTrustStore = trustStore,
-            AllowSelfSignedCerts = true,
+            SkipHostnameVerification = true,
         }));
 
         var client = provider.GetRequiredService<BricksNetHttpClient>();

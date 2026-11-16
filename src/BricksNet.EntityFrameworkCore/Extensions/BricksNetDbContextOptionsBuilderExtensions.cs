@@ -91,7 +91,10 @@ public static class BricksNetDbContextOptionsBuilderExtensions
     /// <summary>Configures the context to connect to Databricks SQL with pre-built client options.</summary>
     /// <param name="optionsBuilder">The builder being used to configure the context.</param>
     /// <param name="clientOptions">The BricksNet client options (host, HTTP path, authentication, ...).</param>
-    /// <param name="accessToken">The access token for PAT authentication, when used.</param>
+    /// <param name="accessToken">
+    /// The personal access token, or the client secret when <see cref="BricksNetClientOptions.AuthType"/>
+    /// is <see cref="AuthType.OAuthClientCredentials"/>.
+    /// </param>
     /// <param name="bricksNetOptionsAction">An optional action to allow additional BricksNet-specific configuration.</param>
     /// <returns>The options builder so that further configuration can be chained.</returns>
     public static DbContextOptionsBuilder UseBricksNet(

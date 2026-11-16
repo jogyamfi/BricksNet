@@ -6,7 +6,7 @@ namespace BricksNet.Connection;
 /// Configuration for the <see cref="BricksNetHttpClient"/> and its underlying
 /// <see cref="System.Net.Http.HttpClient"/> pipeline.
 /// </summary>
-public sealed record BricksNetHttpClientOptions
+internal sealed record BricksNetHttpClientOptions
 {
     /// <summary>Base address for all requests (e.g. <c>https://my-workspace.azuredatabricks.net:443</c>).</summary>
     public required Uri BaseAddress { get; init; }

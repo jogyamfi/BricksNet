@@ -8,7 +8,7 @@ namespace BricksNet.Results;
 /// run in parallel up to a bounded degree, while rows are surfaced in ascending
 /// <see cref="ExternalLink.ChunkIndex"/> order so the result set stays correctly ordered.
 /// </summary>
-public sealed class CloudFetchResultHandler : IResultsProvider, IDisposable
+internal sealed class CloudFetchResultHandler : IResultsProvider, IDisposable
 {
     private readonly IReadOnlyList<ExternalLink> _links;
     private readonly HttpClient _httpClient;

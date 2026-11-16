@@ -6,7 +6,7 @@ namespace BricksNet.Connection;
 /// Helpers for reading <see cref="HttpContent"/> bodies in the formats the Databricks backends
 /// return: raw Arrow stream bytes and columnar JSON.
 /// </summary>
-public static class HttpContentExtensions
+internal static class HttpContentExtensions
 {
     /// <summary>
     /// Buffers the full response body into memory and returns it as a <see cref="ReadOnlyMemory{T}"/>.

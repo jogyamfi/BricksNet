@@ -24,7 +24,7 @@ namespace BricksNet.Telemetry;
 /// <see cref="LogLevel.Information"/> or above.
 /// </para>
 /// </remarks>
-public static partial class LogMessages
+internal static partial class LogMessages
 {
     // ---- Connection / session lifecycle (Information) — EventId 1000–1099 --------------------------
 

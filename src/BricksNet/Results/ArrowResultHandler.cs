@@ -9,7 +9,7 @@ namespace BricksNet.Results;
 /// <see cref="FetchNextChunkAsync"/> reads and converts a single <see cref="RecordBatch"/>,
 /// keeping memory bounded to one batch at a time.
 /// </summary>
-public sealed class ArrowResultHandler : IResultsProvider, IDisposable
+internal sealed class ArrowResultHandler : IResultsProvider, IDisposable
 {
     private readonly Stream? _stream;
     private readonly ArrowStreamReader? _reader;

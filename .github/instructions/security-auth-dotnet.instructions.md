@@ -52,13 +52,15 @@ These rules apply to authentication and HTTP connection code. They map directly 
 
 ## TLS
 
-- Never set `ServerCertificateCustomValidationCallback` to always return `true`. If `AllowSelfSignedCerts` is enabled, log a `Warning`, validate only the certificate chain (not the hostname), and add a comment describing the risk.
+- Never set a certificate validation callback that always returns `true`. If `SkipHostnameVerification` is enabled, log a `Warning`, still validate the certificate chain, tolerate only `RemoteCertificateNameMismatch`, and add a comment describing the risk.
 
   ```csharp
-  // SECURITY: self-signed certs disable hostname verification. Development only.
-  handler.SslOptions.RemoteCertificateValidationCallback = (_, cert, chain, errors) =>
-      errors == SslPolicyErrors.RemoteCertificateNameMismatch; // chain still validated
+  // SECURITY: hostname verification is skipped. Development only. The chain is still validated.
+  sslClientOptions.RemoteCertificateValidationCallback = (_, _, _, errors) =>
+      (errors & ~SslPolicyErrors.RemoteCertificateNameMismatch) == SslPolicyErrors.None;
   ```
+
+- Private or self-signed roots are trusted through `SslOptions.CustomTrustStore` (connection-string keyword `TrustedCertificatesPath`), which rebuilds the chain with `X509ChainTrustMode.CustomRootTrust`. Certificates sent by the server may be used to build the path but must never become trust anchors.
 
 - Always use HTTPS. Validate the scheme at connection time and throw if `http://` is supplied.
 

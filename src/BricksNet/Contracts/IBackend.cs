@@ -7,7 +7,7 @@ namespace BricksNet.Contracts;
 /// selected at connect time based on <see cref="BricksNetClientOptions.UseThrift"/>.
 /// Mirrors <c>IBackend</c> from <c>databricks-sql-nodejs/lib/contracts/IBackend.ts</c>.
 /// </summary>
-public interface IBackend
+internal interface IBackend
 {
     /// <summary>Establishes backend-level state using the supplied connection options.</summary>
     Task ConnectAsync(BricksNetClientOptions options, CancellationToken cancellationToken = default);

@@ -1,7 +1,7 @@
 namespace BricksNet.Contracts;
 
 /// <summary>Persistent token cache for OAuth tokens.</summary>
-public interface ITokenCache
+internal interface ITokenCache
 {
     /// <summary>
     /// Attempts to retrieve a cached, non-expired token for <paramref name="key"/>.

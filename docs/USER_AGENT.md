@@ -1,135 +1,37 @@
-# User-Agent in the Databricks JDBC Driver
+# User-Agent header
 
-## Overview
+BricksNet sets the HTTP `User-Agent` header on every request. Databricks shows it in **Query
+History**, so it tells you which client ran a statement.
 
-The driver produces two distinct user-agent strings depending on context, both built in
-`UserAgentManager`. The shared constant values come from `DriverUtil` (driver version) and
-`AgentDetector` (AI coding agent detection).
+## Defaults
 
----
-
-## 1. SDK-Managed User Agent
-
-Used for all normal requests. Built via the Databricks SDK `UserAgent` class in `setUserAgent()`,
-then retrieved through `getUserAgentString()`, which replaces the `databricks-sdk-java` segment
-with `databricks-jdbc-http`.
-
-### Format
-
-```
-DatabricksJDBCDriverOSS/<driver-version> databricks-jdbc-http jvm/<jvm-version> os/<os-name> Java/<client-type> [<CustomerApp>/<version>]
-```
-
-### Components
-
-| Segment | Source | Example |
-|---|---|---|
-| Product | `DEFAULT_USER_AGENT` + `DriverUtil.getDriverVersion()` | `DatabricksJDBCDriverOSS/3.4.1` |
-| HTTP client | `SDK_USER_AGENT` replaced at output time | `databricks-jdbc-http` |
-| JVM info | SDK standard info | `jvm/21.0.3` |
-| OS info | SDK standard info | `os/Linux` |
-| Client type | `Java/<getClientUserAgent()>` — `SQLExecHttpClient` (SEA) or `THttpClient` (Thrift) | `Java/SQLExecHttpClient` |
-| Customer UA | Optional; from `UserAgentEntry` JDBC connection parameter (URL-decoded) | `MyApp/2.1.0` |
-
----
-
-## 2. Connector Service User Agent
-
-Used specifically for **feature flag requests**, before the client type is resolved (to avoid a
-circular dependency). Built manually in `buildUserAgentForConnectorService()`.
-
-### Format
-
-```
-DatabricksJDBCDriverOSS/<driver-version> databricks-jdbc-http jvm/<jvm-version> os/<os-name> [<CustomerApp>/<version>] [agent/<agent-name>]
-```
-
-### Components
-
-| Segment | Source | Example |
-|---|---|---|
-| Product | `DEFAULT_USER_AGENT` + `DriverUtil.getDriverVersion()` | `DatabricksJDBCDriverOSS/3.4.1` |
-| HTTP client | `JDBC_HTTP_USER_AGENT` literal | `databricks-jdbc-http` |
-| JVM version | `System.getProperty("java.version")` | `jvm/21.0.3` |
-| OS name | `System.getProperty("os.name")` (spaces → `_`) | `os/Windows_10` |
-| Customer UA | Optional; from `UserAgentEntry` JDBC connection parameter (URL-decoded) | `MyApp/2.1.0` |
-| AI agent | Optional; from `AgentDetector.detect()` — env var sniffing | `agent/claude-code` |
-
-> **Note:** Client type (`Java/...`) is intentionally omitted from this format.
-
----
-
-## Customer UserAgent Entry
-
-The `UserAgentEntry` JDBC connection parameter lets callers inject a custom identifier.
-
-- The value may be URL-encoded (decoded with `URLDecoder`).
-- Format: `Name/Version` — if no `/` is present, the version defaults to the string `"version"`.
-- Invalid values are silently dropped (logged at DEBUG level).
-
-Examples of valid values:
-
-| Parameter value | Resulting segment |
+| Backend | Header sent |
 |---|---|
-| `MyBITool/4.2` | `MyBITool/4.2` |
-| `MyApp%2F3.0` (URL-encoded) | `MyApp/3.0` |
-| `MyTool` (no version) | `MyTool/version` |
+| REST (SQL Statement Execution API) | `BricksNet.dotnet/<version>` |
+| Thrift | `DatabricksJDBCDriverOSS/3.0.0 BricksNet.dotnet/<version>` |
 
----
+`<version>` is the package version without build metadata, for example `0.1.0-preview.1`.
 
-## AI Coding Agent Detection
+### Why the Thrift header leads with another driver's name
 
-`AgentDetector` checks well-known environment variables. Detection succeeds only when **exactly
-one** matching variable is set (to avoid ambiguous attribution).
+The SQL warehouse endpoint accepts Thrift requests only when the first `User-Agent` token names a
+Databricks driver it recognises. Any other client is rejected with
+`MALFORMED_REQUEST: Client ... is not supported for SQL warehouses`. BricksNet therefore leads with
+the token in `BricksNetDefaults.ThriftUserAgent` and puts its own identifier second, so it is still
+visible in the header. The REST API has no such check, so REST requests identify only as BricksNet.
+BricksNet sends the same Thrift header to SQL warehouses and all-purpose clusters.
 
-| Environment variable | Product string |
-|---|---|
-| `ANTIGRAVITY_AGENT` | `antigravity` |
-| `CLAUDECODE` | `claude-code` |
-| `CLINE_ACTIVE` | `cline` |
-| `CODEX_CI` | `codex` |
-| `CURSOR_AGENT` | `cursor` |
-| `GEMINI_CLI` | `gemini-cli` |
-| `OPENCODE` | `opencode` |
+## Setting your own value
 
-Agent info is appended as `agent/<product>` and is only included in the **connector service**
-user-agent string.
+Set `BricksNetClientOptions.UserAgent`, or the `UserAgent` connection-string keyword:
 
----
-
-## Sample User-Agent Strings
-
-**Minimal — connector service, no extras:**
 ```
-DatabricksJDBCDriverOSS/3.4.1 databricks-jdbc-http jvm/21.0.3 os/Linux
+Host=...;HttpPath=...;Token=...;UserAgent=MyApp/2.1.0
 ```
 
-**SDK path — SEA client, no customer UA:**
-```
-DatabricksJDBCDriverOSS/3.4.1 databricks-jdbc-http jvm/21.0.3 os/Linux Java/SQLExecHttpClient
-```
+An explicit value replaces the default completely, on both backends. On Thrift against a SQL
+warehouse, the first token must still be one the warehouse accepts, or requests fail as described
+above.
 
-**SDK path — Thrift client, no customer UA:**
-```
-DatabricksJDBCDriverOSS/3.4.1 databricks-jdbc-http jvm/17.0.9 os/Windows_10 Java/THttpClient
-```
-
-**SDK path — SEA client with customer UA:**
-```
-DatabricksJDBCDriverOSS/3.4.1 databricks-jdbc-http jvm/21.0.3 os/Linux Java/SQLExecHttpClient MyBITool/4.2
-```
-
-**SDK path — customer UA with no version (defaults to literal `"version"`):**
-```
-DatabricksJDBCDriverOSS/3.4.1 databricks-jdbc-http jvm/21.0.3 os/Linux Java/SQLExecHttpClient MyTool/version
-```
-
-**Connector service — running inside Claude Code:**
-```
-DatabricksJDBCDriverOSS/3.4.1 databricks-jdbc-http jvm/21.0.3 os/Linux agent/claude-code
-```
-
-**Connector service — customer app + Cursor agent:**
-```
-DatabricksJDBCDriverOSS/3.4.1 databricks-jdbc-http jvm/21.0.3 os/Windows_10 MyBITool/4.2 agent/cursor
-```
+Use the `Product/Version` form. A space-separated value such as `MyApp 2.1.0` is rewritten to
+`MyApp/2.1.0`, and a debug-level log message records the change.

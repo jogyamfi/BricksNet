@@ -10,7 +10,7 @@ namespace BricksNet.Results;
 /// .NET types using the supplied <see cref="ColumnInfo"/> schema. The entire payload is returned by
 /// the first <see cref="FetchNextChunkAsync"/> call.
 /// </summary>
-public sealed class JsonResultHandler : IResultsProvider
+internal sealed class JsonResultHandler : IResultsProvider
 {
     private readonly ReadOnlyMemory<byte> _payload;
     private readonly IReadOnlyList<ColumnInfo> _schema;

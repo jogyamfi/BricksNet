@@ -1,7 +1,7 @@
 namespace BricksNet.Results;
 
 /// <summary>Wire format of a query result payload.</summary>
-public enum ResultFormat
+internal enum ResultFormat
 {
     /// <summary>Apache Arrow IPC stream (primary format).</summary>
     Arrow,

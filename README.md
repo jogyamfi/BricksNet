@@ -80,6 +80,26 @@ await using var client = new BricksNetClient(options, oauthOptions);
 await using var session = await client.OpenSessionAsync();
 ```
 
+### OAuth 2.0 client credentials (service principal, machine-to-machine)
+
+For services and jobs that run without a user, authenticate as a Databricks
+[service principal](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m) with its client ID and
+an OAuth secret. BricksNet requests tokens from the workspace's `/oidc/v1/token` endpoint and renews
+them before they expire.
+
+```csharp
+var options = new BricksNetClientOptions
+{
+    Host          = "adb-<workspace-id>.azuredatabricks.net",
+    HttpPath      = "/sql/1.0/warehouses/<warehouse-id>",
+    AuthType      = AuthType.OAuthClientCredentials,
+    OAuthClientId = "<service-principal-client-id>",
+};
+
+// The secret goes where a personal access token would.
+await using var client = new BricksNetClient(options, clientSecret);
+```
+
 ---
 
 ## Quick Start — ADO.NET
@@ -90,10 +110,16 @@ await using var session = await client.OpenSessionAsync();
 Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;Token=<pat>
 ```
 
-Connection strings authenticate with a personal access token. OAuth client credentials
-(machine-to-machine) are not supported. To use OAuth PKCE with ADO.NET, build the client with
-`OAuthOptions` (see above) and pass it to the `BricksNetConnection` constructor that takes a client
-factory.
+For a service principal (OAuth client credentials), use `ClientId` and `ClientSecret` instead of
+`Token`:
+
+```
+Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;ClientId=<id>;ClientSecret=<secret>
+```
+
+`AuthType=OAuthClientCredentials` is implied when `ClientSecret` is set and `Token` is not. To use
+interactive OAuth PKCE with ADO.NET, build the client with `OAuthOptions` (see above) and pass it to the
+`BricksNetConnection` constructor that takes a client factory.
 
 Add `KeepSessionAlive=true` to keep the Databricks session open across `Close()`/`Open()` cycles
 (it is released on `Dispose()`), which avoids starting a new session each time the connection opens.
@@ -172,6 +198,20 @@ builder.Services.AddBricksNet(
 
 Inject `IBricksNetClient` into your services.
 
+### Other credentials, such as Microsoft Entra ID
+
+To authenticate with a token BricksNet does not obtain itself (for example a Microsoft Entra ID
+token for Azure Databricks), implement `IAuthProvider` and pass it in:
+
+```csharp
+builder.Services.AddBricksNet(options, sp => new MyEntraIdTokenProvider());
+// or, without DI:
+await using var client = new BricksNetClient(options, new MyEntraIdTokenProvider());
+```
+
+`GetTokenAsync` is called for every HTTP request, so the provider should cache the token and renew
+it before it expires.
+
 ---
 
 ## Thrift Backend (All-purpose clusters)
@@ -204,9 +244,31 @@ Arrow results with full microsecond precision.
 
 ---
 
+## TLS: proxies and private certificate authorities
+
+By default the server certificate is validated against the operating system's trust store. If you
+connect through a TLS-inspecting proxy, or to an endpoint whose certificate comes from a private
+certificate authority, trust that authority's root certificate explicitly:
+
+```
+Host=...;HttpPath=...;Token=...;TrustedCertificatesPath=C:\certs\corporate-root.pem
+```
+
+or, with the fluent API, `SslOptions = new SslOptions { CustomTrustStore = rootCertificates }`.
+When a custom trust store is set, the system store is not used, intermediates sent by the server
+are used to build the chain, and revocation is not checked.
+
+`SkipHostnameVerification=true` accepts a valid certificate issued for a different hostname. It does
+not make an untrusted certificate acceptable, and it weakens security, so use it only in development.
+
+---
+
 ## Logging & Telemetry
 
-BricksNet writes structured logs via `Microsoft.Extensions.Logging` and emits OpenTelemetry-compatible `Activity` spans under the `BricksNet` source name. Register your preferred sink in the normal way.
+BricksNet writes structured logs via `Microsoft.Extensions.Logging` and emits OpenTelemetry-compatible
+`Activity` spans on the `BricksNet` activity source (`BricksNetActivitySource.SourceName`), for example
+`tracing.AddSource(BricksNetActivitySource.SourceName)`. SQL text is recorded on spans only when
+`TelemetryOptions.SensitiveDataLoggingEnabled` is set. Tokens are never logged or recorded.
 
 ---
 

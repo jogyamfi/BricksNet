@@ -1,12 +1,12 @@
 # BricksNet.EntityFrameworkCore — Design and Status
 
-> User guide: [`docs/EFCORE.md`](EFCORE.md). Core library plan: [`PLAN.md`](../PLAN.md).
+> User guide: [`docs/EFCORE.md`](EFCORE.md).
 
 `BricksNet.EntityFrameworkCore` is an Entity Framework Core 10 relational provider for Databricks SQL.
 It is a separate project and NuGet package on top of the BricksNet ADO.NET provider
 (`BricksNetConnection`, `BricksNetCommand`, `BricksNetDataReader`).
 
-**Status:** all nine planned phases are implemented. The live functional suite
+**Status:** preview. The live functional suite
 (`tests/BricksNet.EntityFrameworkCore.FunctionalTests`) passes against a Databricks workspace
 (2026-10-03). CI runs the unit and SQL-baseline tests; the live suite runs locally.
 
@@ -32,7 +32,7 @@ It is a separate project and NuGet package on top of the BricksNet ADO.NET provi
 3. **Rows affected from the DML summary.** Databricks answers DML with a `num_affected_rows` result
    set. Every command is mapped as a rows-affected-only result set, which gives EF its concurrency
    checks.
-4. **Core fixes in BricksNet where EF needed them** (Phase 0). These also benefit Dapper and other
+4. **Core fixes in BricksNet where EF needed them**. These also benefit Dapper and other
    ADO.NET users.
 5. **Testing.** CI runs unit and SQL-baseline tests against an in-memory fake service. A purpose-built
    live suite (`Category=E2E`) runs locally against a real workspace.
@@ -44,7 +44,7 @@ It is a separate project and NuGet package on top of the BricksNet ADO.NET provi
 | Fact | How the provider handles it |
 |---|---|
 | No multi-statement transactions; each statement commits on its own | Decision 1 |
-| DML returns a summary result set (`num_affected_rows`, …) | `ExecuteNonQuery`/`RecordsAffected` read it (Phase 0); EF consumes it as rows affected (Phase 6) |
+| DML returns a summary result set (`num_affected_rows`, …) | `ExecuteNonQuery`/`RecordsAffected` read it; EF consumes it as rows affected |
 | No `RETURNING`/`OUTPUT` | Decision 2 |
 | Double quotes delimit strings; identifiers use backticks | `BricksNetSqlGenerationHelper` |
 | String literals use backslash escapes; `'a''b'` is two literals | One escaping helper, covered by fuzz tests |
@@ -61,20 +61,20 @@ It is a separate project and NuGet package on top of the BricksNet ADO.NET provi
 | No unsigned integers; `TINYINT` is signed | Unsigned types widen (`byte` → `SMALLINT`, `ulong` → `DECIMAL(20,0)`) |
 | `round` rounds half up; .NET rounds half to even | `Math.Round` → `bround` |
 
-## What each phase delivered
+## What was built, by area
 
-| Phase | Delivered | Changed from the original plan |
+| Area | Delivered | Changed from the original design |
 |---|---|---|
-| 0 — Core prerequisites | Rows affected for DML; typed `GetFieldValue<T>`; `TIMESTAMP_NTZ` → `DateTime`; `DbType` → SQL type hints; `ServerVersion`/`SparkVersion`; `BricksNetException.ErrorClass`/`IsTransient`; instance client factories; `KeepSessionAlive` | `SparkVersion` (from `SELECT version()`) instead of a DBR version, which SQL warehouses do not report |
-| 1 — Scaffolding | Project and package, `UseBricksNet` overloads, service registration, transaction policy, SQL-baseline test harness | Repeated `UseBricksNet` calls replace earlier connection settings rather than being rejected; a throwing migrator gives a clear "migrations not supported" error |
-| 2 — Type mapping | Every scalar CLR type, Databricks typed literals, facets and store-type aliases | Decimal parameters keep their own precision instead of the column's |
-| 3 — Query pipeline | `LIMIT`/`OFFSET`, `DIV`, `\|\|`, `LATERAL`; baselines for all core operators | `Take`/`Skip` inlined as literals; no unsupported-shape detector, because the live run showed which shapes work |
-| 4 — Translators | String, math, date, conversion, `Guid`, `Regex` translations; `EF.Functions.ILike`/`DateDiff*`; `string.Join` over groups | `Math.Max`/`Min` and `byte[].Length` live in the SQL-translating visitor, where EF 10 routes them |
-| 5 — Model | Value-generation convention, UUIDv7 keys, model validation, Unity Catalog names | `HasDefaultValue` and hidden `OwnsMany` keys are also rejected |
-| 6 — SaveChanges | DML generation, concurrency checks, non-atomic handling, retries, diagnostic events | Retries are tagged per statement, because EF's strategy unwraps `DbUpdateException`; `ExecuteSql` must be wrapped to be retried |
-| 7 — Bulk and performance | `ExecuteUpdate`/`ExecuteDelete`, multi-row inserts, idle-session replacement | `WHERE EXISTS` instead of generated `MERGE`; an idle timeout instead of a session pool |
-| 8 — Live testing | `EnsureCreated`/`EnsureDeleted`/`GenerateCreateScript`; live functional suite with benchmarks | A purpose-built suite instead of EF's specification tests; `EnsureDeleted` drops tables, not schemas |
-| 9 — Release | User guide, sample, packaging, CI pack step | — |
+| Core prerequisites | Rows affected for DML; typed `GetFieldValue<T>`; `TIMESTAMP_NTZ` → `DateTime`; `DbType` → SQL type hints; `ServerVersion`/`SparkVersion`; `BricksNetException.ErrorClass`/`IsTransient`; instance client factories; `KeepSessionAlive` | `SparkVersion` (from `SELECT version()`) instead of a DBR version, which SQL warehouses do not report |
+| Scaffolding | Project and package, `UseBricksNet` overloads, service registration, transaction policy, SQL-baseline test harness | Repeated `UseBricksNet` calls replace earlier connection settings rather than being rejected; a throwing migrator gives a clear "migrations not supported" error |
+| Type mapping | Every scalar CLR type, Databricks typed literals, facets and store-type aliases | Decimal parameters keep their own precision instead of the column's |
+| Query pipeline | `LIMIT`/`OFFSET`, `DIV`, `\|\|`, `LATERAL`; baselines for all core operators | `Take`/`Skip` inlined as literals; no unsupported-shape detector, because the live run showed which shapes work |
+| Translators | String, math, date, conversion, `Guid`, `Regex` translations; `EF.Functions.ILike`/`DateDiff*`; `string.Join` over groups | `Math.Max`/`Min` and `byte[].Length` live in the SQL-translating visitor, where EF 10 routes them |
+| Model | Value-generation convention, UUIDv7 keys, model validation, Unity Catalog names | `HasDefaultValue` and hidden `OwnsMany` keys are also rejected |
+| SaveChanges | DML generation, concurrency checks, non-atomic handling, retries, diagnostic events | Retries are tagged per statement, because EF's strategy unwraps `DbUpdateException`; `ExecuteSql` must be wrapped to be retried |
+| Bulk and performance | `ExecuteUpdate`/`ExecuteDelete`, multi-row inserts, idle-session replacement | `WHERE EXISTS` instead of generated `MERGE`; an idle timeout instead of a session pool |
+| Live testing | `EnsureCreated`/`EnsureDeleted`/`GenerateCreateScript`; live functional suite with benchmarks | A purpose-built suite instead of EF's specification tests; `EnsureDeleted` drops tables, not schemas |
+| Release | User guide, sample, packaging, CI pack step | — |
 
 ## Architecture
 

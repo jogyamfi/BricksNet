@@ -9,18 +9,22 @@ namespace BricksNet.Auth;
 /// </summary>
 /// <remarks>
 /// <see cref="AuthType.Pat"/> yields a <see cref="PatAuthProvider"/>; <see cref="AuthType.OAuthPkce"/>
-/// yields a <see cref="CachedTokenProvider"/> wrapping an <see cref="OAuthPkceAuthProvider"/>.
+/// and <see cref="AuthType.OAuthClientCredentials"/> yield a <see cref="CachedTokenProvider"/> wrapping
+/// an <see cref="OAuthPkceAuthProvider"/> or an <see cref="OAuthClientCredentialsAuthProvider"/>.
 /// Credentials are supplied as parameters rather than carried on
 /// <see cref="BricksNetClientOptions"/> so they are not retained in long-lived option records.
 /// </remarks>
-public static class AuthProviderFactory
+internal static class AuthProviderFactory
 {
     /// <summary>Creates an <see cref="IAuthProvider"/> based on <paramref name="options"/>.</summary>
     /// <param name="options">Client options selecting the authentication mechanism.</param>
-    /// <param name="accessToken">The personal access token. Required when using <see cref="AuthType.Pat"/>.</param>
+    /// <param name="accessToken">
+    /// The personal access token for <see cref="AuthType.Pat"/>, or the client secret for
+    /// <see cref="AuthType.OAuthClientCredentials"/>.
+    /// </param>
     /// <param name="oauthOptions">OAuth configuration. Required when using <see cref="AuthType.OAuthPkce"/>.</param>
     /// <param name="tokenExchangeClient">
-    /// HTTP client used for the OAuth token exchange. Required when using <see cref="AuthType.OAuthPkce"/>.
+    /// HTTP client used for the OAuth token exchange. Required for both OAuth types.
     /// Must not be the auth-injecting BricksNet pipeline client.
     /// </param>
     /// <param name="tokenCache">
@@ -69,6 +73,34 @@ public static class AuthProviderFactory
 
                 return new CachedTokenProvider(
                     oauthProvider,
+                    loggerFactory?.CreateLogger<CachedTokenProvider>());
+
+            case AuthType.OAuthClientCredentials:
+                if (string.IsNullOrEmpty(options.OAuthClientId))
+                {
+                    throw new ArgumentException(
+                        "BricksNetClientOptions.OAuthClientId is required for AuthType.OAuthClientCredentials.",
+                        nameof(options));
+                }
+
+                if (string.IsNullOrEmpty(accessToken))
+                {
+                    throw new ArgumentException(
+                        "The OAuth client secret is required for AuthType.OAuthClientCredentials.",
+                        nameof(accessToken));
+                }
+
+                ArgumentNullException.ThrowIfNull(tokenExchangeClient);
+
+                var clientCredentialsProvider = new OAuthClientCredentialsAuthProvider(
+                    OAuthClientCredentialsAuthProvider.TokenEndpointFor(options.Host, options.Port),
+                    options.OAuthClientId,
+                    accessToken,
+                    tokenExchangeClient,
+                    loggerFactory?.CreateLogger<OAuthClientCredentialsAuthProvider>());
+
+                return new CachedTokenProvider(
+                    clientCredentialsProvider,
                     loggerFactory?.CreateLogger<CachedTokenProvider>());
 
             default:
