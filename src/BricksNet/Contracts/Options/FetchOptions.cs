@@ -1,7 +1,7 @@
 namespace BricksNet.Contracts.Options;
 
 /// <summary>Options controlling a single backend fetch call.</summary>
-public sealed record FetchOptions
+internal sealed record FetchOptions
 {
     /// <summary>Maximum number of rows to retrieve in this fetch.</summary>
     public int MaxRows { get; init; } = 10_000;

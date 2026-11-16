@@ -1,7 +1,7 @@
 namespace BricksNet.Contracts.Options;
 
 /// <summary>Backend-level options passed to <c>IBackend.OpenSessionAsync</c>.</summary>
-public sealed record BackendSessionOptions
+internal sealed record BackendSessionOptions
 {
     /// <summary>Default catalog for the session.</summary>
     public string? Catalog { get; init; }

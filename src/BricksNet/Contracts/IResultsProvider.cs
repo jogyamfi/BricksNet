@@ -4,7 +4,7 @@ namespace BricksNet.Contracts;
 /// Streaming row provider over a completed operation result.
 /// Used internally by <see cref="IBricksNetOperation"/> to page through large result sets.
 /// </summary>
-public interface IResultsProvider
+internal interface IResultsProvider
 {
     /// <summary><see langword="true"/> while the server reports additional rows available.</summary>
     bool HasMoreRows { get; }

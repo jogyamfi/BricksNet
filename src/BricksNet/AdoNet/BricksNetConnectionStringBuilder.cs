@@ -2,6 +2,8 @@ using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using BricksNet.Contracts.Options;
 
 namespace BricksNet.AdoNet;
@@ -23,6 +25,8 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
     private const string HttpPathKey = "HttpPath";
     private const string TokenKey = "Token";
     private const string AuthTypeKey = "AuthType";
+    private const string ClientIdKey = "ClientId";
+    private const string ClientSecretKey = "ClientSecret";
     private const string UseThriftKey = "UseThrift";
     private const string UseCloudFetchKey = "UseCloudFetch";
     private const string CatalogKey = "Catalog";
@@ -33,7 +37,8 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
     private const string ProxyTypeKey = "ProxyType";
     private const string ProxyUserKey = "ProxyUser";
     private const string ProxyPasswordKey = "ProxyPassword";
-    private const string AllowSelfSignedKey = "AllowSelfSignedCerts";
+    private const string SkipHostnameVerificationKey = "SkipHostnameVerification";
+    private const string TrustedCertificatesPathKey = "TrustedCertificatesPath";
     private const string UserAgentKey = "UserAgent";
     private const string KeepSessionAliveKey = "KeepSessionAlive";
     private const string KeptSessionIdleTimeoutKey = "KeptSessionIdleTimeoutSeconds";
@@ -53,6 +58,10 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
             ["Access Token"] = TokenKey,
             ["AccessToken"] = TokenKey,
             ["PersonalAccessToken"] = TokenKey,
+            ["Client Id"] = ClientIdKey,
+            ["OAuthClientId"] = ClientIdKey,
+            ["Client Secret"] = ClientSecretKey,
+            ["OAuthClientSecret"] = ClientSecretKey,
             ["Default Catalog"] = CatalogKey,
             ["Initial Catalog"] = CatalogKey,
             ["Default Schema"] = SchemaKey,
@@ -102,11 +111,39 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
         set => this[TokenKey] = value!;
     }
 
-    /// <summary>Authentication mechanism. Defaults to <see cref="AuthType.Pat"/>.</summary>
+    /// <summary>
+    /// Authentication mechanism. When the keyword is absent, it is
+    /// <see cref="AuthType.OAuthClientCredentials"/> if <see cref="ClientSecret"/> is set and
+    /// <see cref="Token"/> is not, and <see cref="AuthType.Pat"/> otherwise.
+    /// </summary>
     public AuthType AuthType
     {
-        get => GetEnum(AuthTypeKey, AuthType.Pat);
+        get => GetEnum(
+            AuthTypeKey,
+            !string.IsNullOrEmpty(ClientSecret) && string.IsNullOrEmpty(Token)
+                ? AuthType.OAuthClientCredentials
+                : AuthType.Pat);
         set => this[AuthTypeKey] = value.ToString();
+    }
+
+    /// <summary>
+    /// OAuth client ID (application ID) of a service principal, for
+    /// <see cref="AuthType.OAuthClientCredentials"/>.
+    /// </summary>
+    public string? ClientId
+    {
+        get => GetString(ClientIdKey);
+        set => this[ClientIdKey] = value!;
+    }
+
+    /// <summary>
+    /// OAuth secret of a service principal, for <see cref="AuthType.OAuthClientCredentials"/>. Like
+    /// <see cref="Token"/>, it is a credential and is never logged.
+    /// </summary>
+    public string? ClientSecret
+    {
+        get => GetString(ClientSecretKey);
+        set => this[ClientSecretKey] = value!;
     }
 
     /// <summary>When <see langword="true"/>, connects via the Thrift backend; otherwise REST. Defaults to <see langword="false"/> (REST).</summary>
@@ -183,13 +220,25 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
     }
 
     /// <summary>
-    /// When <see langword="true"/>, the server certificate chain is validated but
-    /// hostname verification is skipped. Weakens transport security; development only.
+    /// When <see langword="true"/>, the server certificate chain is still validated but a
+    /// certificate issued for a different hostname is accepted. Weakens transport security;
+    /// development only. See <see cref="SslOptions.SkipHostnameVerification"/>.
     /// </summary>
-    public bool AllowSelfSignedCerts
+    public bool SkipHostnameVerification
     {
-        get => GetBoolean(AllowSelfSignedKey, false);
-        set => this[AllowSelfSignedKey] = value;
+        get => GetBoolean(SkipHostnameVerificationKey, false);
+        set => this[SkipHostnameVerificationKey] = value;
+    }
+
+    /// <summary>
+    /// Path to a PEM file of one or more certificates. When set, the server certificate must chain
+    /// to one of them and the system trust store is not used. Use this for a TLS-inspecting proxy
+    /// or a private certificate authority. See <see cref="SslOptions.CustomTrustStore"/>.
+    /// </summary>
+    public string? TrustedCertificatesPath
+    {
+        get => GetString(TrustedCertificatesPathKey);
+        set => this[TrustedCertificatesPathKey] = value!;
     }
 
     /// <summary>
@@ -256,7 +305,9 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
     /// </summary>
     /// <param name="accessToken">Receives the parsed access token, or <see langword="null"/>.</param>
     /// <returns>The populated client options.</returns>
-    /// <exception cref="BricksNetException">A required keyword is missing.</exception>
+    /// <exception cref="BricksNetException">
+    /// A required keyword is missing, or <see cref="TrustedCertificatesPath"/> cannot be read.
+    /// </exception>
     public BricksNetClientOptions ToClientOptions(out string? accessToken)
     {
         var host = Host;
@@ -271,18 +322,38 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
             throw new BricksNetException("The connection string is missing the required 'HttpPath' keyword.");
         }
 
-        accessToken = Token;
+        AuthType authType = AuthType;
+        if (authType == AuthType.OAuthClientCredentials)
+        {
+            if (string.IsNullOrWhiteSpace(ClientId) || string.IsNullOrEmpty(ClientSecret))
+            {
+                throw new BricksNetException(
+                    "AuthType OAuthClientCredentials needs both the 'ClientId' and 'ClientSecret' keywords.");
+            }
+
+            // The secret travels where a token would, so it is not retained on the options record.
+            accessToken = ClientSecret;
+        }
+        else
+        {
+            accessToken = Token;
+        }
 
         return new BricksNetClientOptions
         {
             Host = host,
             Port = Port,
             HttpPath = httpPath,
-            AuthType = AuthType,
+            AuthType = authType,
+            OAuthClientId = authType == AuthType.OAuthClientCredentials ? ClientId : null,
             UseThrift = UseThrift,
             UseCloudFetch = UseCloudFetch,
             ProxyOptions = BuildProxyOptions(),
-            SslOptions = new SslOptions { AllowSelfSignedCerts = AllowSelfSignedCerts },
+            SslOptions = new SslOptions
+            {
+                SkipHostnameVerification = SkipHostnameVerification,
+                CustomTrustStore = LoadTrustedCertificates(),
+            },
             UserAgent = string.IsNullOrEmpty(UserAgent) ? null : UserAgent,
         };
     }
@@ -296,6 +367,34 @@ public sealed class BricksNetConnectionStringBuilder : DbConnectionStringBuilder
         QueryTimeoutSeconds = QueryTimeoutSeconds,
         MaxRows = MaxRows,
     };
+
+    private X509Certificate2Collection? LoadTrustedCertificates()
+    {
+        string? path = TrustedCertificatesPath;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        var certificates = new X509Certificate2Collection();
+        try
+        {
+            certificates.ImportFromPemFile(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
+        {
+            throw new BricksNetException(
+                $"The certificates in TrustedCertificatesPath '{path}' could not be loaded: {ex.Message}", ex);
+        }
+
+        if (certificates.Count == 0)
+        {
+            throw new BricksNetException(
+                $"TrustedCertificatesPath '{path}' contains no PEM certificates.");
+        }
+
+        return certificates;
+    }
 
     private ProxyOptions? BuildProxyOptions()
     {

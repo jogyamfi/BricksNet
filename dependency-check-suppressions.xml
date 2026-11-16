@@ -28,4 +28,18 @@
     <packageUrl regex="true">^pkg:nuget/Apache\.Arrow@.*$</packageUrl>
     <cve>CVE-2026-25087</cve>
   </suppress>
+  <suppress>
+    <notes><![CDATA[
+      False positive. CVE-2026-111497 is an out-of-bounds write in the Google Brotli C decoder
+      (c/dec/decode.c, Brotli 1.0.3-1.2.0). NVD lists cpe:/a:apache:arrow (up to 26.0.0) because
+      Arrow C++ bundles that decoder. The Apache.Arrow NuGet package is the independent, fully managed
+      C# implementation: it ships only managed assemblies, contains no Brotli code, and BricksNet does
+      not reference Apache.Arrow.Compression. It is matched only through the shared CPE.
+      The .NET runtime's own Brotli (used by HttpClient decompression) is fixed in .NET 10.0.14; that is
+      the runtime BricksNet's users run on, not a package dependency. Suppressed by CVE id only, so
+      other Arrow CVEs still fail the scan. Revisit if Apache.Arrow adds native code or Brotli support.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:nuget/Apache\.Arrow@.*$</packageUrl>
+    <cve>CVE-2026-111497</cve>
+  </suppress>
 </suppressions>

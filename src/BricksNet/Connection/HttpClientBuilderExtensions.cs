@@ -14,7 +14,7 @@ namespace BricksNet.Connection;
 /// Registers the BricksNet HTTP transport — the typed <see cref="BricksNetHttpClient"/>, its primary
 /// <see cref="SocketsHttpHandler"/> (proxy + TLS), and the delegating-handler pipeline.
 /// </summary>
-public static partial class HttpClientBuilderExtensions
+internal static partial class HttpClientBuilderExtensions
 {
     /// <summary>
     /// Registers the BricksNet HTTP transport on <paramref name="services"/>.
@@ -23,7 +23,7 @@ public static partial class HttpClientBuilderExtensions
     /// <param name="options">Client options carrying host, retry, proxy and TLS configuration.</param>
     /// <returns>The <see cref="IHttpClientBuilder"/> for further customisation.</returns>
     /// <remarks>
-    /// An <see cref="IAuthProvider"/> must be registered separately (see Phase 4). The delegating
+    /// An <see cref="IAuthProvider"/> must be registered separately. The delegating
     /// handlers execute in the order <c>Retry → Auth</c>; retry is outermost so a fresh token is
     /// fetched on every replayed attempt. Proxy and TLS are configured on the primary handler.
     /// </remarks>
@@ -134,7 +134,7 @@ public static partial class HttpClientBuilderExtensions
     [GeneratedRegex(@"^([A-Za-z][\w.-]*) (\d+\.\d+[\w.-]*)$", RegexOptions.CultureInvariant)]
     private static partial Regex ProductVersionSpaceRegex();
 
-    private static SocketsHttpHandler CreatePrimaryHandler(BricksNetClientOptions options, ILogger logger)
+    internal static SocketsHttpHandler CreatePrimaryHandler(BricksNetClientOptions options, ILogger logger)
     {
         var handler = new SocketsHttpHandler
         {
@@ -158,7 +158,7 @@ public static partial class HttpClientBuilderExtensions
     private static void ConfigureTls(SocketsHttpHandler handler, SslOptions sslOptions, ILogger logger)
     {
         // Default: rely on the system trust store with full validation. No callback needed.
-        if (!sslOptions.AllowSelfSignedCerts && sslOptions.CustomTrustStore is null)
+        if (!sslOptions.SkipHostnameVerification && sslOptions.CustomTrustStore is null)
         {
             return;
         }
@@ -167,10 +167,10 @@ public static partial class HttpClientBuilderExtensions
 
         if (sslOptions.CustomTrustStore is { } customTrustStore)
         {
-            if (sslOptions.AllowSelfSignedCerts)
+            if (sslOptions.SkipHostnameVerification)
             {
                 logger.LogWarning(
-                    "AllowSelfSignedCerts is enabled alongside a CustomTrustStore. "
+                    "SkipHostnameVerification is enabled alongside a CustomTrustStore. "
                     + "Hostname verification will be skipped. Do not use in production.");
             }
 
@@ -184,15 +184,15 @@ public static partial class HttpClientBuilderExtensions
                     chain,
                     sslPolicyErrors,
                     trustStore,
-                    sslOptions.AllowSelfSignedCerts);
+                    sslOptions.SkipHostnameVerification);
         }
-        else if (sslOptions.AllowSelfSignedCerts)
+        else if (sslOptions.SkipHostnameVerification)
         {
-            // WARNING: this path validates the certificate chain but skips hostname verification.
-            // It weakens transport security and must only be used in development against known
-            // endpoints. It NEVER unconditionally returns true.
+            // WARNING: this path validates the certificate chain against the system trust store but
+            // skips hostname verification. It weakens transport security and must only be used in
+            // development against known endpoints. It NEVER unconditionally returns true.
             logger.LogWarning(
-                "AllowSelfSignedCerts is enabled. Hostname verification will be skipped. "
+                "SkipHostnameVerification is enabled. Hostname verification will be skipped. "
                 + "This weakens transport security and must not be used in production.");
 
             sslClientOptions.RemoteCertificateValidationCallback = (_, _, _, sslPolicyErrors) =>
@@ -202,20 +202,27 @@ public static partial class HttpClientBuilderExtensions
         handler.SslOptions = sslClientOptions;
     }
 
-    private static bool ValidateAgainstCustomTrustStore(
+    /// <summary>
+    /// Validates a server certificate against <paramref name="trustStore"/> instead of the system
+    /// trust store. Only certificates in <paramref name="trustStore"/> act as trust anchors;
+    /// intermediates sent by the server are used to build the chain but are not trusted on their own.
+    /// Revocation is not checked.
+    /// </summary>
+    internal static bool ValidateAgainstCustomTrustStore(
         X509Certificate? certificate,
         X509Chain? chain,
         SslPolicyErrors sslPolicyErrors,
         X509Certificate2Collection trustStore,
-        bool allowSelfSignedCerts)
+        bool skipHostnameVerification)
     {
         if (certificate is null || chain is null)
         {
             return false;
         }
 
-        // A name mismatch is only tolerated when self-signed certs are explicitly allowed.
-        SslPolicyErrors tolerated = allowSelfSignedCerts
+        // A name mismatch is only tolerated when hostname verification is explicitly skipped.
+        // Chain errors are ignored here because the chain is rebuilt against the custom store below.
+        SslPolicyErrors tolerated = skipHostnameVerification
             ? SslPolicyErrors.RemoteCertificateNameMismatch
             : SslPolicyErrors.None;
         if ((sslPolicyErrors & ~tolerated & ~SslPolicyErrors.RemoteCertificateChainErrors) != SslPolicyErrors.None)
@@ -224,7 +231,7 @@ public static partial class HttpClientBuilderExtensions
         }
 
         using var cert2 = new X509Certificate2(certificate);
-        var customChain = new X509Chain
+        using var customChain = new X509Chain
         {
             ChainPolicy =
             {
@@ -233,6 +240,14 @@ public static partial class HttpClientBuilderExtensions
             },
         };
         customChain.ChainPolicy.CustomTrustStore.AddRange(trustStore);
+
+        // Intermediates the server presented. In CustomRootTrust mode, ExtraStore certificates only
+        // help build the path; they are never trust anchors.
+        customChain.ChainPolicy.ExtraStore.AddRange(chain.ChainPolicy.ExtraStore);
+        foreach (X509ChainElement element in chain.ChainElements)
+        {
+            customChain.ChainPolicy.ExtraStore.Add(element.Certificate);
+        }
 
         try
         {

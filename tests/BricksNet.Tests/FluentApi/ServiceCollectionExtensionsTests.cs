@@ -80,6 +80,49 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.NotNull(authProvider);
     }
 
+    // ---- Custom IAuthProvider overload ----
+
+    private sealed class FixedTokenProvider : IAuthProvider
+    {
+        public Task<string> GetTokenAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult("entra-token");
+    }
+
+    [Fact]
+    public async Task AddBricksNet_CustomAuthProvider_RegistersProviderAndClient()
+    {
+        var custom = new FixedTokenProvider();
+        var services = new ServiceCollection();
+        services.AddBricksNet(RestOptions, _ => custom);
+
+        await using var provider = services.BuildServiceProvider();
+
+        Assert.Same(custom, provider.GetRequiredService<IAuthProvider>());
+        Assert.IsType<BricksNetClient>(provider.GetRequiredService<IBricksNetClient>());
+    }
+
+    [Fact]
+    public async Task AddBricksNet_OAuthClientCredentials_ResolvesCachingProviderAndClient()
+    {
+        var services = new ServiceCollection();
+        services.AddBricksNet(
+            RestOptions with { AuthType = AuthType.OAuthClientCredentials, OAuthClientId = "sp-id" },
+            "sp-secret");
+
+        await using var provider = services.BuildServiceProvider();
+
+        Assert.IsType<CachedTokenProvider>(provider.GetRequiredService<IAuthProvider>());
+        Assert.NotNull(provider.GetRequiredService<IBricksNetClient>());
+    }
+
+    [Fact]
+    public void AddBricksNet_CustomAuthProvider_NullFactory_Throws()
+    {
+        var services = new ServiceCollection();
+        Assert.Throws<ArgumentNullException>(() =>
+            services.AddBricksNet(RestOptions, (Func<IServiceProvider, IAuthProvider>)null!));
+    }
+
     // ---- BricksNetClientOptions registration ----
 
     [Fact]

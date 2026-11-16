@@ -11,7 +11,7 @@ namespace BricksNet.Auth;
 /// Expired entries are treated as cache misses and removed lazily on access. Token values are
 /// credentials and are never logged.
 /// </remarks>
-public sealed class OAuthTokenCache : ITokenCache
+internal sealed class OAuthTokenCache : ITokenCache
 {
     private const int DefaultCapacity = 32;
 

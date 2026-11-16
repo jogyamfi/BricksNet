@@ -72,6 +72,11 @@ These rules apply to project files and shared MSBuild configuration.
 
 - Set `GenerateDocumentationFile=true` in `BricksNet.csproj`. Suppress `CS1591` (missing XML comment) only in test projects, never in the library.
 
+## Public API
+
+- `BricksNet.csproj` uses `Microsoft.CodeAnalysis.PublicApiAnalyzers`. A new or changed public member must be added to `src/BricksNet/PublicAPI.Unshipped.txt` (the IDE code fix for `RS0016` does this). Prefer `internal` for anything a user does not need to call, configure or mock: making a type public later is not a breaking change, but hiding one is.
+- `BricksNet.EntityFrameworkCore` follows the EF Core convention instead: implementation types are public in `*.Internal` namespaces, and EF's `EF1001` analyzer warns consumers who use them.
+
 ## Deterministic / CI Builds
 
 - Set `Deterministic=true` unconditionally and `ContinuousIntegrationBuild=true` when the `CI` environment variable is set, for reproducible package hashes.
@@ -82,6 +87,7 @@ These rules apply to project files and shared MSBuild configuration.
 
 ## Excluding Content
 
+- `LICENSE` and `NOTICE` from the repository root are packed into every package by `src/Directory.Build.props`.
 - Do not embed appsettings, connection strings, or test fixtures in the package. Exclude with:
 
   ```xml
@@ -101,3 +107,9 @@ These rules apply to project files and shared MSBuild configuration.
 - The version comes from git tags via MinVer (referenced in `src/Directory.Build.props`, `MinVerTagPrefix=v`). **Never set `<Version>` in a project file.** Tag `v0.1.0-preview.1` produces `0.1.0-preview.1` for every package. Untagged commits produce `0.1.0-alpha.0.<height>`.
 - All packages ship in lockstep with the same version. `BricksNet.EntityFrameworkCore` depends on the exact `BricksNet` version built alongside it.
 - CI checkouts that build or pack need full history (`fetch-depth: 0`), or MinVer cannot find the tags.
+
+## Verification and Release
+
+- After any change to packaging, run `./scripts/Test-Packages.ps1`. It packs, inspects package contents and dependencies, validates Source Link, determinism and symbols, and smoke-tests both packages from a local feed. CI runs it on every PR.
+- New build- or test-only packages must be added to the forbidden-dependency list in `scripts/Test-Packages.ps1`. A new shipped file must be added to its allowed-file list.
+- Publishing happens only through `.github/workflows/release.yml`, on a `v*` tag on `main`. Never run `dotnet nuget push` by hand. See `docs/RELEASING.md`.

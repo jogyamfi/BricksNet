@@ -8,7 +8,7 @@ namespace BricksNet.Contracts;
 /// and metadata methods on <see cref="ISessionBackend"/>.
 /// Mirrors <c>IOperationBackend</c> from <c>databricks-sql-nodejs/lib/contracts/IOperationBackend.ts</c>.
 /// </summary>
-public interface IOperationBackend
+internal interface IOperationBackend
 {
     /// <summary>Opaque operation identifier assigned by the server.</summary>
     string Id { get; }

@@ -1,0 +1,31 @@
+BricksNet
+Copyright (c) James Gyamfi
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+BricksNet is an independent project. It is not affiliated with, endorsed by or
+supported by Databricks, Inc. "Databricks" is a trademark of Databricks, Inc.
+
+-------------------------------------------------------------------------------
+Third-party attributions
+-------------------------------------------------------------------------------
+
+Portions of this product are derived from the following works, both licensed
+under the Apache License, Version 2.0:
+
+Databricks SQL Driver for Node.js
+  https://github.com/databricks/databricks-sql-nodejs
+  Copyright Databricks, Inc.
+  The Thrift wire types under src/BricksNet/Backends/Thrift/Generated were
+  transcribed from the TCLIService definitions in this project. The layered
+  backend design (client, session, operation) follows it as well.
+
+Databricks JDBC Driver (OSS)
+  https://github.com/databricks/databricks-jdbc
+  Copyright Databricks, Inc.
+  Used as a reference for the TCLIService wire types, the dual REST/Thrift
+  backend design and the record/replay fake-service test pattern.
+
+The TCLIService interface definition originates from Apache Hive
+(https://hive.apache.org), Copyright The Apache Software Foundation, licensed
+under the Apache License, Version 2.0.

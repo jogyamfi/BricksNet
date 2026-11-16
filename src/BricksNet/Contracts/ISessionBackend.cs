@@ -6,7 +6,7 @@ namespace BricksNet.Contracts;
 /// Backend handle scoped to a single session. Returned by <see cref="IBackend.OpenSessionAsync"/>.
 /// Mirrors <c>ISessionBackend</c> from <c>databricks-sql-nodejs/lib/contracts/ISessionBackend.ts</c>.
 /// </summary>
-public interface ISessionBackend
+internal interface ISessionBackend
 {
     /// <summary>Opaque session identifier assigned by the server.</summary>
     string Id { get; }

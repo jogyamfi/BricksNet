@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using BricksNet.Contracts.Options;
 using Xunit;
 
@@ -46,7 +48,117 @@ public class BricksNetConnectionStringBuilderTests
         Assert.Equal(AuthType.Pat, builder.AuthType);
         Assert.Equal(10_000, builder.MaxRows);
         Assert.Equal(0, builder.QueryTimeoutSeconds);
-        Assert.False(builder.AllowSelfSignedCerts);
+        Assert.False(builder.SkipHostnameVerification);
+        Assert.Null(builder.TrustedCertificatesPath);
+    }
+
+    [Fact]
+    public void ClientIdAndSecret_WithoutToken_InferOAuthClientCredentials()
+    {
+        var builder = new BricksNetConnectionStringBuilder("Host=h;HttpPath=/p;ClientId=sp-id;ClientSecret=sp-secret");
+
+        Assert.Equal(AuthType.OAuthClientCredentials, builder.AuthType);
+
+        var options = builder.ToClientOptions(out var credential);
+        Assert.Equal(AuthType.OAuthClientCredentials, options.AuthType);
+        Assert.Equal("sp-id", options.OAuthClientId);
+        Assert.Equal("sp-secret", credential);
+    }
+
+    [Fact]
+    public void Token_WinsOverClientSecret_WhenAuthTypeIsNotSet()
+    {
+        var builder = new BricksNetConnectionStringBuilder("Host=h;HttpPath=/p;Token=pat;ClientId=sp-id;ClientSecret=sp-secret");
+
+        var options = builder.ToClientOptions(out var credential);
+
+        Assert.Equal(AuthType.Pat, options.AuthType);
+        Assert.Null(options.OAuthClientId);
+        Assert.Equal("pat", credential);
+    }
+
+    [Fact]
+    public void ExplicitOAuthClientCredentials_WithoutClientId_Throws()
+    {
+        var builder = new BricksNetConnectionStringBuilder(
+            "Host=h;HttpPath=/p;AuthType=OAuthClientCredentials;ClientSecret=sp-secret");
+
+        var ex = Assert.Throws<BricksNetException>(() => builder.ToClientOptions(out _));
+        Assert.Contains("ClientId", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("OAuthClientId", "OAuthClientSecret")]
+    [InlineData("Client Id", "Client Secret")]
+    public void ClientCredentialAliases_Map(string idKeyword, string secretKeyword)
+    {
+        var builder = new BricksNetConnectionStringBuilder($"Host=h;HttpPath=/p;{idKeyword}=sp-id;{secretKeyword}=sp-secret");
+
+        Assert.Equal("sp-id", builder.ClientId);
+        Assert.Equal("sp-secret", builder.ClientSecret);
+    }
+
+    [Fact]
+    public void ToClientOptions_NoTrustedCertificatesPath_LeavesCustomTrustStoreNull()
+    {
+        var builder = new BricksNetConnectionStringBuilder("Host=h;HttpPath=/p");
+
+        Assert.Null(builder.ToClientOptions(out _).SslOptions.CustomTrustStore);
+    }
+
+    [Fact]
+    public void ToClientOptions_TrustedCertificatesPath_LoadsPemCertificates()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            using var rsa = RSA.Create(2048);
+            var request = new CertificateRequest(
+                "CN=bricksnet-test-root", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            using X509Certificate2 cert = request.CreateSelfSigned(
+                DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+            File.WriteAllText(path, cert.ExportCertificatePem());
+
+            var builder = new BricksNetConnectionStringBuilder(
+                $"Host=h;HttpPath=/p;TrustedCertificatesPath={path}");
+            X509Certificate2Collection? store = builder.ToClientOptions(out _).SslOptions.CustomTrustStore;
+
+            Assert.NotNull(store);
+            X509Certificate2 loaded = Assert.Single(store);
+            Assert.Equal(cert.Thumbprint, loaded.Thumbprint);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void ToClientOptions_TrustedCertificatesPathMissing_ThrowsBricksNetException()
+    {
+        string path = Path.Join(Path.GetTempPath(), $"bricksnet-missing-{Guid.NewGuid():N}.pem");
+        var builder = new BricksNetConnectionStringBuilder($"Host=h;HttpPath=/p;TrustedCertificatesPath={path}");
+
+        var ex = Assert.Throws<BricksNetException>(() => builder.ToClientOptions(out _));
+        Assert.Contains("TrustedCertificatesPath", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToClientOptions_TrustedCertificatesPathWithoutCertificates_ThrowsBricksNetException()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "not a certificate");
+            var builder = new BricksNetConnectionStringBuilder(
+                $"Host=h;HttpPath=/p;TrustedCertificatesPath={path}");
+
+            Assert.Throws<BricksNetException>(() => builder.ToClientOptions(out _));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Theory]
@@ -89,7 +201,7 @@ public class BricksNetConnectionStringBuilderTests
             HttpPath = "/sql/1.0/warehouses/x",
             Token = "tok",
             UseThrift = false,
-            AllowSelfSignedCerts = true,
+            SkipHostnameVerification = true,
         };
 
         var options = builder.ToClientOptions(out var token);
@@ -98,7 +210,7 @@ public class BricksNetConnectionStringBuilderTests
         Assert.Equal(8443, options.Port);
         Assert.Equal("/sql/1.0/warehouses/x", options.HttpPath);
         Assert.False(options.UseThrift);
-        Assert.True(options.SslOptions.AllowSelfSignedCerts);
+        Assert.True(options.SslOptions.SkipHostnameVerification);
         Assert.Equal("tok", token);
     }
 

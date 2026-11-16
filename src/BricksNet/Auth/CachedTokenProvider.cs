@@ -25,7 +25,7 @@ internal interface ISupportsTokenExpiry
 /// When the inner provider cannot report an expiry, every call delegates straight through without
 /// caching. Token values are credentials and are never logged.
 /// </remarks>
-public sealed class CachedTokenProvider : IAuthProvider
+internal sealed class CachedTokenProvider : IAuthProvider
 {
     /// <summary>Remaining lifetime below which a cached token is refreshed eagerly.</summary>
     public static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);

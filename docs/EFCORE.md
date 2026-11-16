@@ -81,6 +81,9 @@ A connection string looks like:
 Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;Token=<pat>;Catalog=main;Schema=sales
 ```
 
+For a service principal, replace `Token=<pat>` with `ClientId=<id>;ClientSecret=<secret>` (OAuth client
+credentials).
+
 `Catalog` and `Schema` set the session defaults, which unqualified table names resolve against. Use
 `UseThrift=true` with an all-purpose cluster's HTTP path.
 

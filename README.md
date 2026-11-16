@@ -1,8 +1,14 @@
 # BricksNet
-<!---
-[![NuGet](https://img.shields.io/nuget/v/BricksNet.svg)](https://www.nuget.org/packages/BricksNet)
+
 [![Build](https://github.com/jogyamfi/BricksNet/actions/workflows/build.yml/badge.svg)](https://github.com/jogyamfi/BricksNet/actions/workflows/build.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+<!-- Enable after the first release to nuget.org:
+[![NuGet](https://img.shields.io/nuget/v/BricksNet.svg)](https://www.nuget.org/packages/BricksNet)
 -->
+
+> **Status: preview.** The API can still change before 1.0. BricksNet is an independent,
+> community-maintained project. It is not affiliated with, endorsed by or supported by Databricks, Inc.
+
 **BricksNet** is a .NET 10 Databricks SQL client library providing three complementary surfaces:
 
 - **Fluent async API** — `BricksNetClient → BricksNetSession → BricksNetOperation`
@@ -14,9 +20,12 @@ All surfaces target SQL Warehouses (REST backend) and All-purpose clusters (Thri
 ---
 
 ## Installation
-This is not published yet and so not yet on Nuget
+
+The packages are not on nuget.org yet. Until the first preview release, build from source
+(`dotnet build BricksNet.sln`) and reference the projects under `src/`. After the release:
+
 ```shell
-dotnet add package BricksNet
+dotnet add package BricksNet --prerelease
 ```
 
 ---
@@ -71,6 +80,26 @@ await using var client = new BricksNetClient(options, oauthOptions);
 await using var session = await client.OpenSessionAsync();
 ```
 
+### OAuth 2.0 client credentials (service principal, machine-to-machine)
+
+For services and jobs that run without a user, authenticate as a Databricks
+[service principal](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m) with its client ID and
+an OAuth secret. BricksNet requests tokens from the workspace's `/oidc/v1/token` endpoint and renews
+them before they expire.
+
+```csharp
+var options = new BricksNetClientOptions
+{
+    Host          = "adb-<workspace-id>.azuredatabricks.net",
+    HttpPath      = "/sql/1.0/warehouses/<warehouse-id>",
+    AuthType      = AuthType.OAuthClientCredentials,
+    OAuthClientId = "<service-principal-client-id>",
+};
+
+// The secret goes where a personal access token would.
+await using var client = new BricksNetClient(options, clientSecret);
+```
+
 ---
 
 ## Quick Start — ADO.NET
@@ -81,10 +110,16 @@ await using var session = await client.OpenSessionAsync();
 Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;Token=<pat>
 ```
 
-For OAuth:
+For a service principal (OAuth client credentials), use `ClientId` and `ClientSecret` instead of
+`Token`:
+
 ```
-Host=...;HttpPath=...;ClientId=<id>;ClientSecret=<secret>
+Host=adb-<workspace-id>.azuredatabricks.net;HttpPath=/sql/1.0/warehouses/<id>;ClientId=<id>;ClientSecret=<secret>
 ```
+
+`AuthType=OAuthClientCredentials` is implied when `ClientSecret` is set and `Token` is not. To use
+interactive OAuth PKCE with ADO.NET, build the client with `OAuthOptions` (see above) and pass it to the
+`BricksNetConnection` constructor that takes a client factory.
 
 Add `KeepSessionAlive=true` to keep the Databricks session open across `Close()`/`Open()` cycles
 (it is released on `Dispose()`), which avoids starting a new session each time the connection opens.
@@ -163,6 +198,20 @@ builder.Services.AddBricksNet(
 
 Inject `IBricksNetClient` into your services.
 
+### Other credentials, such as Microsoft Entra ID
+
+To authenticate with a token BricksNet does not obtain itself (for example a Microsoft Entra ID
+token for Azure Databricks), implement `IAuthProvider` and pass it in:
+
+```csharp
+builder.Services.AddBricksNet(options, sp => new MyEntraIdTokenProvider());
+// or, without DI:
+await using var client = new BricksNetClient(options, new MyEntraIdTokenProvider());
+```
+
+`GetTokenAsync` is called for every HTTP request, so the provider should cache the token and renew
+it before it expires.
+
 ---
 
 ## Thrift Backend (All-purpose clusters)
@@ -195,9 +244,31 @@ Arrow results with full microsecond precision.
 
 ---
 
+## TLS: proxies and private certificate authorities
+
+By default the server certificate is validated against the operating system's trust store. If you
+connect through a TLS-inspecting proxy, or to an endpoint whose certificate comes from a private
+certificate authority, trust that authority's root certificate explicitly:
+
+```
+Host=...;HttpPath=...;Token=...;TrustedCertificatesPath=C:\certs\corporate-root.pem
+```
+
+or, with the fluent API, `SslOptions = new SslOptions { CustomTrustStore = rootCertificates }`.
+When a custom trust store is set, the system store is not used, intermediates sent by the server
+are used to build the chain, and revocation is not checked.
+
+`SkipHostnameVerification=true` accepts a valid certificate issued for a different hostname. It does
+not make an untrusted certificate acceptable, and it weakens security, so use it only in development.
+
+---
+
 ## Logging & Telemetry
 
-BricksNet writes structured logs via `Microsoft.Extensions.Logging` and emits OpenTelemetry-compatible `Activity` spans under the `BricksNet` source name. Register your preferred sink in the normal way.
+BricksNet writes structured logs via `Microsoft.Extensions.Logging` and emits OpenTelemetry-compatible
+`Activity` spans on the `BricksNet` activity source (`BricksNetActivitySource.SourceName`), for example
+`tracing.AddSource(BricksNetActivitySource.SourceName)`. SQL text is recorded on spans only when
+`TelemetryOptions.SensitiveDataLoggingEnabled` is set. Tokens are never logged or recorded.
 
 ---
 
@@ -208,6 +279,15 @@ Databricks workspace, see **[docs/LIVE_TESTING.md](docs/LIVE_TESTING.md)**.
 
 ---
 
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and send changes. To report a
+vulnerability, follow [SECURITY.md](SECURITY.md) and do not open a public issue.
+
+---
+
 ## License
 
-[Apache 2.0](LICENSE)
+[Apache 2.0](LICENSE). Third-party attributions are in [NOTICE](NOTICE).
+
+Databricks is a trademark of Databricks, Inc. This project is not affiliated with Databricks, Inc.

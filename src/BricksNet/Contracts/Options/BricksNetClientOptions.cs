@@ -15,6 +15,13 @@ public sealed record BricksNetClientOptions
     /// <summary>Authentication mechanism. Defaults to <see cref="AuthType.Pat"/>.</summary>
     public AuthType AuthType { get; init; } = AuthType.Pat;
 
+    /// <summary>
+    /// The service principal's OAuth client ID (application ID). Required for
+    /// <see cref="AuthType.OAuthClientCredentials"/>, ignored otherwise. The client secret is not
+    /// carried here: pass it where a personal access token would go.
+    /// </summary>
+    public string? OAuthClientId { get; init; }
+
     /// <summary>When <see langword="true"/>, the Thrift backend is used; otherwise the REST backend. Defaults to <see langword="false"/> (REST).</summary>
     public bool UseThrift { get; init; } = false;
 
@@ -47,8 +54,9 @@ public sealed record BricksNetClientOptions
     /// <list type="bullet">
     ///   <item><description>
     ///     <b>Thrift</b> transport (<see cref="UseThrift"/> = <see langword="true"/>): uses
-    ///     <see cref="BricksNetDefaults.ThriftUserAgent"/> because Databricks SQL Warehouses
-    ///     require a minimum Simba driver version over this protocol.
+    ///     <see cref="BricksNetDefaults.ThriftUserAgent"/> followed by
+    ///     <c>BricksNet.dotnet/&lt;version&gt;</c>, because SQL warehouses accept Thrift requests
+    ///     only when the first User-Agent token names a known Databricks driver.
     ///   </description></item>
     ///   <item><description>
     ///     <b>REST</b> transport (<see cref="UseThrift"/> = <see langword="false"/>): uses

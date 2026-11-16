@@ -47,6 +47,45 @@ public sealed class BricksNetClientTests
                 NullLoggerFactory.Instance));
     }
 
+    private sealed class FixedTokenProvider : IAuthProvider
+    {
+        public Task<string> GetTokenAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult("entra-token");
+    }
+
+    [Fact]
+    public async Task Constructor_WithCustomAuthProvider_DoesNotThrow()
+    {
+        await using var client = new BricksNetClient(RestOptions, new FixedTokenProvider(), NullLoggerFactory.Instance);
+        await client.ConnectAsync();
+    }
+
+    [Fact]
+    public async Task Constructor_WithOAuthClientCredentials_DoesNotThrow()
+    {
+        await using var client = new BricksNetClient(
+            RestOptions with { AuthType = AuthType.OAuthClientCredentials, OAuthClientId = "sp-id" },
+            "sp-secret",
+            NullLoggerFactory.Instance);
+        await client.ConnectAsync();
+    }
+
+    [Fact]
+    public void Constructor_OAuthClientCredentialsWithoutClientId_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => new BricksNetClient(
+            RestOptions with { AuthType = AuthType.OAuthClientCredentials },
+            "sp-secret",
+            NullLoggerFactory.Instance));
+    }
+
+    [Fact]
+    public void Constructor_NullAuthProvider_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new BricksNetClient(RestOptions, (IAuthProvider)null!, NullLoggerFactory.Instance));
+    }
+
     // ---- ConnectAsync (no network calls for REST backend) ----
 
     [Fact]

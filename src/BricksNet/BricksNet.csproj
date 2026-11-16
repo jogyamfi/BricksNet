@@ -4,8 +4,6 @@
     <AssemblyName>BricksNet</AssemblyName>
     <RootNamespace>BricksNet</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- Suppress missing XML doc warnings until public API is defined in Phase 2+ -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <!-- NuGet package metadata. Shared properties and the version come from src/Directory.Build.props. -->
     <PackageId>BricksNet</PackageId>
@@ -14,21 +12,28 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Phase 3 — HTTP Transport Layer -->
+    <!-- Tracks the public API in PublicAPI.Shipped.txt / PublicAPI.Unshipped.txt, so every change to
+         it is visible in review. Build-time only. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- HTTP transport, DI and logging -->
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-    <!-- Phase 10 — Fluent API self-contained service provider -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Phase 5 — Thrift Code Generation & Transport -->
+    <!-- Thrift backend -->
     <PackageReference Include="ApacheThrift" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Phase 7 — Result Handling -->
+    <!-- Result handling: Arrow and LZ4 -->
     <PackageReference Include="Apache.Arrow" />
     <PackageReference Include="K4os.Compression.LZ4" />
     <PackageReference Include="K4os.Compression.LZ4.Streams" />
@@ -41,8 +46,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Expose internal test seams (e.g. OAuthPkceAuthProvider browser-launch ctor) to unit tests. -->
+    <!-- Expose internal test seams (the HTTP pipeline, the OAuthPkceAuthProvider browser-launch ctor) to the test projects. -->
     <InternalsVisibleTo Include="BricksNet.Tests" />
+    <InternalsVisibleTo Include="BricksNet.IntegrationTests" />
+    <!-- Moq's proxy generator, so the unit tests can mock the internal backend contracts. -->
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 
 </Project>

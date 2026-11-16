@@ -4,14 +4,15 @@ using System.Reflection;
 namespace BricksNet.Telemetry;
 
 /// <summary>
-/// Central <see cref="ActivitySource"/> for BricksNet, emitting OpenTelemetry-compatible spans for
-/// connection, statement, result-fetch, and auth operations.
+/// The <see cref="ActivitySource"/> BricksNet emits OpenTelemetry-compatible spans on, for
+/// connection, statement, result-fetch, and auth operations. Subscribe with
+/// <c>tracing.AddSource(BricksNetActivitySource.SourceName)</c>.
 /// </summary>
 /// <remarks>
 /// Span attributes follow the OpenTelemetry database semantic conventions
 /// (<see href="https://opentelemetry.io/docs/specs/semconv/database/database-spans/"/>). The query
-/// text (<see cref="AttributeNames.DbStatement"/>) is attached only when sensitive-data logging is
-/// explicitly enabled, and is truncated to <see cref="MaxStatementLength"/> characters. No token or
+/// text (the <c>db.statement</c> attribute) is attached only when sensitive-data logging is
+/// explicitly enabled, and is truncated to 1,000 characters. No token or
 /// credential value is ever recorded.
 /// </remarks>
 public static class BricksNetActivitySource
@@ -20,15 +21,15 @@ public static class BricksNetActivitySource
     public const string SourceName = "BricksNet";
 
     /// <summary>Maximum number of characters of SQL text recorded on a span.</summary>
-    public const int MaxStatementLength = 1000;
+    internal const int MaxStatementLength = 1000;
 
     private static readonly string SourceVersion = ResolveVersion();
 
     /// <summary>The shared <see cref="ActivitySource"/> instance.</summary>
-    public static ActivitySource Instance { get; } = new(SourceName, SourceVersion);
+    internal static ActivitySource Instance { get; } = new(SourceName, SourceVersion);
 
     /// <summary>Starts a span covering opening a connection / session to the workspace.</summary>
-    public static Activity? StartConnectionOpen(string serverAddress, int serverPort, string backend)
+    internal static Activity? StartConnectionOpen(string serverAddress, int serverPort, string backend)
     {
         Activity? activity = Instance.StartActivity("databricks.connection.open", ActivityKind.Client);
         if (activity is null)
@@ -41,7 +42,7 @@ public static class BricksNetActivitySource
     }
 
     /// <summary>Starts a span covering closing a connection / session.</summary>
-    public static Activity? StartConnectionClose(string serverAddress, int serverPort, string backend)
+    internal static Activity? StartConnectionClose(string serverAddress, int serverPort, string backend)
     {
         Activity? activity = Instance.StartActivity("databricks.connection.close", ActivityKind.Client);
         if (activity is null)
@@ -57,7 +58,7 @@ public static class BricksNetActivitySource
     /// Starts a span covering a statement execution. The <paramref name="sql"/> text is attached only
     /// when <paramref name="sensitiveDataLoggingEnabled"/> is <see langword="true"/>.
     /// </summary>
-    public static Activity? StartStatementExecute(
+    internal static Activity? StartStatementExecute(
         string sql,
         string? catalog,
         string? schema,
@@ -89,7 +90,7 @@ public static class BricksNetActivitySource
     }
 
     /// <summary>Starts a span covering fetching a chunk of results for a statement.</summary>
-    public static Activity? StartResultFetch(string? statementId, string backend)
+    internal static Activity? StartResultFetch(string? statementId, string backend)
     {
         Activity? activity = Instance.StartActivity("databricks.result.fetch", ActivityKind.Client);
         if (activity is null)
@@ -104,7 +105,7 @@ public static class BricksNetActivitySource
     }
 
     /// <summary>Starts a span covering acquiring an authentication token. The token is never recorded.</summary>
-    public static Activity? StartAuthTokenFetch(string authType)
+    internal static Activity? StartAuthTokenFetch(string authType)
     {
         Activity? activity = Instance.StartActivity("databricks.auth.token", ActivityKind.Client);
         activity?.SetTag(AttributeNames.DatabricksAuthType, authType);
@@ -112,7 +113,7 @@ public static class BricksNetActivitySource
     }
 
     /// <summary>Records the server-assigned statement identifier on an in-progress span.</summary>
-    public static void SetStatementId(Activity? activity, string? statementId)
+    internal static void SetStatementId(Activity? activity, string? statementId)
     {
         if (activity is not null && !string.IsNullOrEmpty(statementId))
         {
@@ -158,7 +159,7 @@ public static class BricksNetActivitySource
     private const string DbSystemValue = "databricks";
 
     /// <summary>Canonical OpenTelemetry / BricksNet span attribute names.</summary>
-    public static class AttributeNames
+    internal static class AttributeNames
     {
         /// <summary><c>db.system</c> — the database management system.</summary>
         public const string DbSystem = "db.system";

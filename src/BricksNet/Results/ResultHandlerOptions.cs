@@ -3,7 +3,7 @@ namespace BricksNet.Results;
 /// <summary>
 /// Tuning options for <see cref="ResultHandlerFactory"/> and the result providers it creates.
 /// </summary>
-public sealed record ResultHandlerOptions
+internal sealed record ResultHandlerOptions
 {
     /// <summary>
     /// Maximum number of rows to surface across all chunks. A non-positive value means unlimited.

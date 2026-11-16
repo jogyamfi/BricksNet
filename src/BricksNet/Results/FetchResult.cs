@@ -18,7 +18,7 @@ namespace BricksNet.Results;
 /// frame-compressed. Inline payloads are always delivered uncompressed.
 /// </para>
 /// </summary>
-public sealed record FetchResult(
+internal sealed record FetchResult(
     ResultFormat Format,
     ReadOnlyMemory<byte> RawPayload,
     IReadOnlyList<ExternalLink>? ExternalLinks,

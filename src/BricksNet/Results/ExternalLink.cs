@@ -1,7 +1,7 @@
 namespace BricksNet.Results;
 
 /// <summary>A pre-signed external link for a CloudFetch result chunk.</summary>
-public sealed record ExternalLink(
+internal sealed record ExternalLink(
     Uri Uri,
     long FileSizeBytes,
     DateTimeOffset Expiration,

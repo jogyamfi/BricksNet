@@ -33,12 +33,20 @@ public sealed class BricksNetClient : IBricksNetClient
     private IBackend? _backend;
     private bool _disposed;
 
+    // RS0026: each public constructor has a distinct required second parameter (token, OAuth options,
+    // auth provider), so the shared optional logger factory cannot make calls ambiguous.
+#pragma warning disable RS0026
     /// <summary>
-    /// Creates a self-contained client authenticating with a personal access token. An internal
-    /// service provider hosts the HTTP pipeline and is disposed with the client.
+    /// Creates a self-contained client authenticating with a personal access token, or, when
+    /// <see cref="BricksNetClientOptions.AuthType"/> is <see cref="AuthType.OAuthClientCredentials"/>,
+    /// with a service principal's OAuth client secret. An internal service provider hosts the HTTP
+    /// pipeline and is disposed with the client.
     /// </summary>
     /// <param name="options">Connection options.</param>
-    /// <param name="accessToken">The personal access token (required for <see cref="AuthType.Pat"/>).</param>
+    /// <param name="accessToken">
+    /// The personal access token for <see cref="AuthType.Pat"/>, or the client secret for
+    /// <see cref="AuthType.OAuthClientCredentials"/> (with <see cref="BricksNetClientOptions.OAuthClientId"/>).
+    /// </param>
     /// <param name="loggerFactory">Optional logger factory; lifecycle logs are suppressed when omitted.</param>
     public BricksNetClient(
         BricksNetClientOptions options,
@@ -46,8 +54,17 @@ public sealed class BricksNetClient : IBricksNetClient
         ILoggerFactory? loggerFactory = null)
         : this(options, loggerFactory)
     {
+        if (_options.AuthType == AuthType.OAuthClientCredentials)
+        {
+            // The token-exchange client must bypass the auth-injecting pipeline.
+            _ownedTokenExchangeClient = CreateTokenExchangeClient();
+        }
+
         IAuthProvider authProvider = AuthProviderFactory.Create(
-            _options, accessToken: accessToken, loggerFactory: _loggerFactory);
+            _options,
+            accessToken: accessToken,
+            tokenExchangeClient: _ownedTokenExchangeClient,
+            loggerFactory: _loggerFactory);
 
         (_ownedProvider, _httpClient) = BuildOwnedPipeline(authProvider);
     }
@@ -68,7 +85,7 @@ public sealed class BricksNetClient : IBricksNetClient
         ArgumentNullException.ThrowIfNull(oauthOptions);
 
         // The token-exchange client must bypass the auth-injecting pipeline.
-        _ownedTokenExchangeClient = new HttpClient();
+        _ownedTokenExchangeClient = CreateTokenExchangeClient();
         IAuthProvider authProvider = AuthProviderFactory.Create(
             _options,
             oauthOptions: oauthOptions,
@@ -79,13 +96,38 @@ public sealed class BricksNetClient : IBricksNetClient
     }
 
     /// <summary>
-    /// Creates a client over a caller-supplied, already-configured HTTP pipeline client (e.g. one
-    /// resolved from <c>IServiceCollection.AddBricksNet</c>). The caller owns the pipeline lifetime.
+    /// Creates a self-contained client that gets its bearer tokens from
+    /// <paramref name="authProvider"/>. Use this for credentials BricksNet does not obtain itself,
+    /// such as Microsoft Entra ID tokens for Azure Databricks. An internal service provider hosts
+    /// the HTTP pipeline and is disposed with the client.
+    /// </summary>
+    /// <param name="options">Connection options. <see cref="BricksNetClientOptions.AuthType"/> is ignored.</param>
+    /// <param name="authProvider">
+    /// Supplies the bearer token. <see cref="IAuthProvider.GetTokenAsync"/> is called for every HTTP
+    /// request, so the provider should cache tokens and refresh them before they expire.
+    /// </param>
+    /// <param name="loggerFactory">Optional logger factory; lifecycle logs are suppressed when omitted.</param>
+    public BricksNetClient(
+        BricksNetClientOptions options,
+        IAuthProvider authProvider,
+        ILoggerFactory? loggerFactory = null)
+        : this(options, loggerFactory)
+    {
+        ArgumentNullException.ThrowIfNull(authProvider);
+
+        (_ownedProvider, _httpClient) = BuildOwnedPipeline(authProvider);
+    }
+
+#pragma warning restore RS0026
+
+    /// <summary>
+    /// Creates a client over a caller-supplied, already-configured HTTP pipeline client (as
+    /// registered by <c>IServiceCollection.AddBricksNet</c>). The caller owns the pipeline lifetime.
     /// </summary>
     /// <param name="options">Connection options.</param>
     /// <param name="httpClient">The configured BricksNet HTTP pipeline client.</param>
     /// <param name="loggerFactory">Optional logger factory; lifecycle logs are suppressed when omitted.</param>
-    public BricksNetClient(
+    internal BricksNetClient(
         BricksNetClientOptions options,
         BricksNetHttpClient httpClient,
         ILoggerFactory? loggerFactory = null)
@@ -216,6 +258,13 @@ public sealed class BricksNetClient : IBricksNetClient
             _ownedProvider?.Dispose();
         }
     }
+
+    /// <summary>
+    /// Creates the client for OAuth token requests. It shares the pipeline's proxy and TLS settings
+    /// but not its handlers, so no bearer token is attached to the token request itself.
+    /// </summary>
+    private HttpClient CreateTokenExchangeClient() =>
+        new(Connection.HttpClientBuilderExtensions.CreatePrimaryHandler(_options, _logger), disposeHandler: true);
 
     private (ServiceProvider Provider, BricksNetHttpClient HttpClient) BuildOwnedPipeline(
         IAuthProvider authProvider)
