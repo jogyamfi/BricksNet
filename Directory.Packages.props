@@ -22,7 +22,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="[10.0.12, 11.0.0)" />
 
     <!-- Samples console app -->
-    <PackageVersion Include="Dapper" Version="2.1.35" />
+    <PackageVersion Include="Dapper" Version="2.1.100" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.12" />
 
